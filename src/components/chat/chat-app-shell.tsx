@@ -87,7 +87,7 @@ export function ChatAppShell({
             </div>
           </SidebarHeader>
 
-          <SidebarMenu className="flex-1 px-2">
+          <SidebarMenu className="flex-1 px-2 space-y-2">
             {conversations.map((convo) => {
               const isActive = pathname.includes(convo.id);
               return (
