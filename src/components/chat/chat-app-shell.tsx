@@ -87,34 +87,45 @@ export function ChatAppShell({
             </div>
           </SidebarHeader>
 
-          <SidebarMenu className="flex-1 px-2 space-y-4">
+          <SidebarMenu className="flex-1 px-2 space-y-1">
             {conversations.map((convo) => {
               const isActive = pathname.includes(convo.id);
               return (
                 <SidebarMenuItem key={convo.id} className="relative">
-                  <Link href={`/chat/${convo.id}`}>
+                  <Link href={`/chat/${convo.id}`} className="w-full">
                     <SidebarMenuButton
                       isActive={isActive}
-                      className="justify-start"
-                      tooltip={convo.name}
+                      className="justify-start h-auto py-3"
+                      tooltip={{
+                        children: convo.name,
+                        side: 'right',
+                        align: 'center',
+                      }}
                     >
-                      <Avatar className="h-8 w-8">
+                      <Avatar className="h-10 w-10">
                         <AvatarImage src={convo.avatarUrl} alt={convo.name} />
                         <AvatarFallback>
                           {getInitials(convo.name)}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="flex flex-1 flex-col items-start text-left">
-                        <span className="truncate">{convo.name}</span>
-                        <span className="text-xs text-muted-foreground truncate max-w-40">
-                          {convo.lastMessage}
-                        </span>
+                      <div className="flex flex-1 flex-col items-start text-left w-0">
+                        <div className="flex justify-between w-full items-center">
+                          <span className="font-semibold truncate">{convo.name}</span>
+                           <span className="text-xs text-muted-foreground">
+                            {convo.lastMessageTimestamp}
+                          </span>
+                        </div>
+                        <div className="flex justify-between w-full items-center">
+                          <span className="text-xs text-muted-foreground truncate">
+                            {convo.lastMessage}
+                          </span>
+                           {convo.unreadCount && convo.unreadCount > 0 ? (
+                            <Badge className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full p-0">
+                              {convo.unreadCount}
+                            </Badge>
+                          ) : null}
+                        </div>
                       </div>
-                      {convo.unreadCount && convo.unreadCount > 0 ? (
-                        <Badge className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
-                          {convo.unreadCount}
-                        </Badge>
-                      ) : null}
                     </SidebarMenuButton>
                   </Link>
                 </SidebarMenuItem>
