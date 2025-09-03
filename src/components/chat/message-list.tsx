@@ -21,7 +21,7 @@ export function MessageList({ messages }: { messages: Message[] }) {
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
-      <div className="space-y-6">
+      <div className="space-y-8">
         {messages.map((message, index) => {
           const isCurrentUser = message.sender.id === currentUser.id;
           const showAvatar = index === 0 || messages[index - 1].sender.id !== message.sender.id;
