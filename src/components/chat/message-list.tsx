@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useRef } from 'react';
@@ -33,10 +34,10 @@ export function MessageList({ messages }: { messages: Message[] }) {
                 'justify-end': isCurrentUser,
               })}
             >
-              <div className={cn('flex flex-col gap-1', { 'items-end': isCurrentUser })}>
-                 {showAvatar && (
-                  <div className={cn("flex items-center gap-2", { "flex-row-reverse": isCurrentUser })}>
-                    <Avatar className={cn('h-8 w-8', { 'invisible': !showAvatar })}>
+              <div className={cn('order-2', { 'order-1': isCurrentUser })}>
+                {showAvatar && (
+                  <div className={cn("flex items-center gap-2 mb-2", { "flex-row-reverse": isCurrentUser })}>
+                    <Avatar className="h-8 w-8">
                         <AvatarImage src={message.sender.avatarUrl} alt={message.sender.name} />
                         <AvatarFallback>{getInitials(message.sender.name)}</AvatarFallback>
                     </Avatar>
@@ -46,14 +47,14 @@ export function MessageList({ messages }: { messages: Message[] }) {
                 )}
                 <div
                   className={cn(
-                    'max-w-md rounded-2xl p-4 text-base shadow-md lg:max-w-xl xl:max-w-2xl',
+                    'max-w-prose rounded-3xl p-4 text-base shadow-lg',
                     {
-                      'bg-primary text-primary-foreground rounded-br-none': isCurrentUser,
-                      'bg-secondary rounded-bl-none': !isCurrentUser,
+                      'bg-primary text-primary-foreground rounded-br-lg': isCurrentUser,
+                      'bg-secondary rounded-bl-lg': !isCurrentUser,
                     }
                   )}
                 >
-                  <p>{message.text}</p>
+                  <p className="break-words">{message.text}</p>
                 </div>
               </div>
             </div>
