@@ -46,10 +46,10 @@ export function MessageList({ messages }: { messages: Message[] }) {
                 )}
                 <div
                   className={cn(
-                    'max-w-xs rounded-lg p-3 text-sm md:max-w-md lg:max-w-lg',
+                    'max-w-md rounded-2xl p-4 text-base shadow-md lg:max-w-xl xl:max-w-2xl',
                     {
-                      'bg-primary text-primary-foreground': isCurrentUser,
-                      'bg-secondary': !isCurrentUser,
+                      'bg-primary text-primary-foreground rounded-br-none': isCurrentUser,
+                      'bg-secondary rounded-bl-none': !isCurrentUser,
                     }
                   )}
                 >
