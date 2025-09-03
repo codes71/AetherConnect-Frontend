@@ -1,6 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -12,17 +15,48 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/logo';
+import { useAuth } from '@/context/auth-context';
+import { useState } from 'react';
+import { login as loginUser } from '@/lib/api';
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
+
+type LoginData = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
+  const { login } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginData>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const onSubmit = async (data: LoginData) => {
+    setError(null);
+    try {
+      const response = await loginUser(data);
+      login(response.data.accessToken);
+      
+    } catch (err) {
+      setError('Invalid email or password. Please try again.');
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary">
       <Card className="mx-auto w-full max-w-sm">
         <CardHeader className="text-center">
           <div className="mb-4 flex justify-center">
-             <Link href="/" className="flex items-center gap-2 text-foreground">
-                <Logo />
-                <span className="text-xl font-bold">Aether Connect</span>
-             </Link>
+            <Link href="/" className="flex items-center gap-2 text-foreground">
+              <Logo />
+              <span className="text-xl font-bold">Aether Connect</span>
+            </Link>
           </div>
           <CardTitle className="text-2xl">Login</CardTitle>
           <CardDescription>
@@ -30,15 +64,16 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="m@example.com"
-                required
+                {...register('email')}
               />
+              {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
             </div>
             <div className="grid gap-2">
               <div className="flex items-center">
@@ -50,12 +85,14 @@ export default function LoginPage() {
                   Forgot your password?
                 </Link>
               </div>
-              <Input id="password" type="password" required />
+              <Input id="password" type="password" {...register('password')} />
+              {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
             </div>
-            <Button type="submit" className="w-full" asChild>
-                <Link href="/chat">Login</Link>
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Logging in...' : 'Login'}
             </Button>
-          </div>
+          </form>
           <div className="mt-4 text-center text-sm">
             Don&apos;t have an account?{' '}
             <Link href="/signup" className="underline">

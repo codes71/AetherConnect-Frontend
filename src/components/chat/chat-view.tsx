@@ -1,34 +1,60 @@
 'use client';
 
-import { useState } from 'react';
-import type { Conversation, Message } from '@/lib/types';
-import { currentUser } from '@/lib/data';
-import { ChatHeader } from './chat-header';
-import { MessageList } from './message-list';
-import { MessageInput } from './message-input';
+import { useEffect, useRef } from 'react';
+import { useSocket } from '@/hooks/use-socket';
+import { MessageInput } from '@/components/chat/message-input';
+import { MessageList } from '@/components/chat/message-list';
+import { useAuth } from '@/context/auth-context';
 
-export function ChatView({ initialConversation }: { initialConversation: Conversation }) {
-  const [conversation, setConversation] = useState(initialConversation);
+interface ChatViewProps {
+  conversationId: string;
+}
 
-  const handleSendMessage = (text: string) => {
-    const newMessage: Message = {
-      id: `msg-${Date.now()}`,
-      text,
-      sender: currentUser,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      read: true,
+export function ChatView({ conversationId }: ChatViewProps) {
+  const { user } = useAuth();
+  const {
+    messages,
+    joinRoom,
+    leaveRoom,
+    sendMessage,
+    startTyping,
+    stopTyping,
+    clearMessages,
+  } = useSocket();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    clearMessages();
+    joinRoom(conversationId);
+
+    return () => {
+      leaveRoom(conversationId);
     };
-    setConversation(prev => ({
-      ...prev,
-      messages: [...prev.messages, newMessage],
-    }));
+  }, [conversationId, joinRoom, leaveRoom, clearMessages]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSendMessage = (content: string) => {
+    sendMessage(conversationId, content);
   };
 
+  if (!user) {
+    return <div>Loading...</div>;
+  }
+
   return (
-    <div className="flex h-full flex-col">
-      <ChatHeader conversation={conversation} />
-      <MessageList messages={conversation.messages} />
-      <MessageInput onSendMessage={handleSendMessage} conversation={conversation} />
+    <div className="flex flex-col h-full">
+      <MessageList messages={messages} currentUserId={user.id} />
+      <div ref={messagesEndRef} />
+      <div className="mt-auto p-4">
+        <MessageInput
+          onSendMessage={handleSendMessage}
+          onTypingStart={() => startTyping(conversationId)}
+          onTypingStop={() => stopTyping(conversationId)}
+        />
+      </div>
     </div>
   );
 }

@@ -44,19 +44,29 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import type { Conversation } from '@/lib/types';
-import { currentUser } from '@/lib/data';
+import { useAuth } from '@/context/auth-context';
+import { useSocket } from '@/hooks/use-socket';
 import { cn } from '@/lib/utils';
-
+import { useEffect, useState } from 'react';
+import { getConversations } from '@/lib/api';
 
 export function ChatAppShell({
   children,
-  conversations,
 }: {
   children: ReactNode;
-  conversations: Conversation[];
 }) {
   const pathname = usePathname();
   const { isMobile } = useSidebar();
+  const { user, logout } = useAuth();
+  const { conversations, setConversations } = useSocket();
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    getConversations().then(response => {
+      setConversations(response.data);
+      setIsLoading(false);
+    });
+  }, [setConversations]);
 
   const getInitials = (name: string) => {
     return name
@@ -64,6 +74,10 @@ export function ChatAppShell({
       .map((n) => n[0])
       .join('');
   };
+
+  if (isLoading || !user) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <>
@@ -138,13 +152,13 @@ export function ChatAppShell({
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="w-full justify-start gap-2 px-2">
                     <Avatar className="h-8 w-8">
-                        <AvatarImage src={currentUser.avatarUrl} alt={currentUser.name} />
-                        <AvatarFallback>{getInitials(currentUser.name)}</AvatarFallback>
+                        <AvatarImage src={user.avatarUrl} alt={user.name} />
+                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col items-start">
-                        <span>{currentUser.name}</span>
-                        <span className={cn("text-xs", currentUser.isOnline ? "text-green-500" : "text-muted-foreground")}>
-                            {currentUser.isOnline ? "Online" : "Offline"}
+                        <span>{user.name}</span>
+                        <span className={cn("text-xs", user.isOnline ? "text-green-500" : "text-muted-foreground")}>
+                            {user.isOnline ? "Online" : "Offline"}
                         </span>
                     </div>
                     <ChevronDown className="ml-auto h-4 w-4" />
@@ -153,9 +167,9 @@ export function ChatAppShell({
               <DropdownMenuContent className="w-56 mb-2" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{currentUser.name}</p>
+                    <p className="text-sm font-medium leading-none">{user.name}</p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      m@example.com
+                      {user.email}
                     </p>
                   </div>
                 </DropdownMenuLabel>
@@ -164,8 +178,8 @@ export function ChatAppShell({
                     <Link href="/chat/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/login"><LogOut className="mr-2 h-4 w-4" /><span>Log out</span></Link>
+                <DropdownMenuItem onClick={logout}>
+                  <LogOut className="mr-2 h-4 w-4" /><span>Log out</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

@@ -1,6 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -12,28 +15,63 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/logo';
+import { useAuth } from '@/context/auth-context';
+import { useState } from 'react';
+import { register as registerUser } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+
+const signupSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+type SignupData = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
+  const { login } = useAuth();
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<SignupData>({
+    resolver: zodResolver(signupSchema),
+  });
+
+  const onSubmit = async (data: SignupData) => {
+    setError(null);
+    try {
+      const response = await registerUser(data);
+      login(response.data.token);
+      router.push('/chat');
+    } catch (err) {
+      setError('Failed to create an account. Please try again.');
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary">
       <Card className="mx-auto w-full max-w-sm">
         <CardHeader className="text-center">
-            <div className="mb-4 flex justify-center">
-                <Link href="/" className="flex items-center gap-2 text-foreground">
-                    <Logo />
-                    <span className="text-xl font-bold">Aether Connect</span>
-                </Link>
-            </div>
+          <div className="mb-4 flex justify-center">
+            <Link href="/" className="flex items-center gap-2 text-foreground">
+              <Logo />
+              <span className="text-xl font-bold">Aether Connect</span>
+            </Link>
+          </div>
           <CardTitle className="text-2xl">Sign Up</CardTitle>
           <CardDescription>
             Enter your information to create an account
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
             <div className="grid gap-2">
-                <Label htmlFor="first-name">Name</Label>
-                <Input id="first-name" placeholder="Max" required />
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" placeholder="Max" {...register('name')} />
+              {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
@@ -41,17 +79,20 @@ export default function SignupPage() {
                 id="email"
                 type="email"
                 placeholder="m@example.com"
-                required
+                {...register('email')}
               />
+              {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" />
+              <Input id="password" type="password" {...register('password')} />
+              {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
             </div>
-            <Button type="submit" className="w-full" asChild>
-                <Link href="/chat">Create an account</Link>
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? 'Creating account...' : 'Create an account'}
             </Button>
-          </div>
+          </form>
           <div className="mt-4 text-center text-sm">
             Already have an account?{' '}
             <Link href="/login" className="underline">
