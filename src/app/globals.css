@@ -1,3 +1,5 @@
+
+@import 'react-datepicker/dist/react-datepicker.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -81,4 +83,45 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+.react-datepicker-wrapper {
+  display: block;
+}
+
+.react-datepicker {
+  @apply bg-card border-border rounded-md border;
+  font-family: sans-serif;
+}
+
+.react-datepicker__header {
+  @apply bg-card border-b-0;
+}
+
+.react-datepicker__current-month, .react-datepicker-time__header, .react-datepicker-year-header {
+    @apply text-card-foreground;
+}
+
+.react-datepicker__day-name, .react-datepicker__day, .react-datepicker__time-name {
+    @apply text-card-foreground w-8 h-8 leading-8;
+}
+
+.react-datepicker__day--selected, .react-datepicker__day--in-selecting-range, .react-datepicker__day--in-range {
+    @apply bg-primary text-primary-foreground rounded-full;
+}
+
+.react-datepicker__day:hover {
+    @apply bg-accent text-accent-foreground rounded-full;
+}
+
+.react-datepicker__day--keyboard-selected {
+    @apply bg-primary text-primary-foreground rounded-full;
+}
+
+.react-datepicker__navigation {
+    @apply top-2;
+}
+
+.react-datepicker__navigation-icon::before {
+    @apply border-card-foreground;
 }

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
+import type { User } from './types';
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
@@ -31,9 +32,41 @@ api.interceptors.response.use(
 
 
 // Auth
-export const login = (data: any) => api.post('/auth/login', data);
-export const register = (data: any) => api.post('/auth/register', data);
-export const getProfile = () => api.get('/auth/profile');
+export const login = (data: any) => {
+  console.log('Mock login with:', data);
+  const mockUser: User = {
+    id: 'user-1',
+    name: 'Test User',
+    email: data.email,
+    avatarUrl: 'https://picsum.photos/seed/user-1/40/40',
+    isOnline: true,
+  };
+  return Promise.resolve({ data: { accessToken: 'mock-token', user: mockUser } });
+};
+
+export const register = (data: any) => {
+  console.log('Mock register with:', data);
+   const mockUser: User = {
+    id: 'user-1',
+    name: data.name,
+    email: data.email,
+    avatarUrl: 'https://picsum.photos/seed/user-1/40/40',
+    isOnline: true,
+  };
+  return Promise.resolve({ data: { token: 'mock-token', user: mockUser } });
+};
+
+export const getProfile = () => {
+  console.log('Mock getProfile');
+  const mockUser: User = {
+    id: 'user-1',
+    name: 'Test User',
+    email: 'test@example.com',
+    avatarUrl: 'https://picsum.photos/seed/user-1/40/40',
+    isOnline: true,
+  };
+  return Promise.resolve({ data: mockUser });
+};
 
 // Conversations
 export const getConversations = () => api.get('/conversations');
