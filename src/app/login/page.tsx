@@ -42,7 +42,6 @@ export default function LoginPage() {
     try {
       const response = await loginUser(data);
       login(response.data.accessToken);
-      
     } catch (err) {
       setError('Invalid email or password. Please try again.');
     }
@@ -72,6 +71,7 @@ export default function LoginPage() {
                 type="email"
                 placeholder="m@example.com"
                 {...register('email')}
+                autoComplete="email"
               />
               {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
             </div>
@@ -85,7 +85,7 @@ export default function LoginPage() {
                   Forgot your password?
                 </Link>
               </div>
-              <Input id="password" type="password" {...register('password')} />
+              <Input id="password" type="password" {...register('password')} autoComplete="current-password" />
               {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}

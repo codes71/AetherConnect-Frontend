@@ -80,12 +80,13 @@ export default function SignupPage() {
                 type="email"
                 placeholder="m@example.com"
                 {...register('email')}
+                autoComplete="email"
               />
               {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" {...register('password')} />
+              <Input id="password" type="password" {...register('password')} autoComplete="new-password" />
               {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}

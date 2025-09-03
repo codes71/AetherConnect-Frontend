@@ -7,12 +7,28 @@ const api = axios.create({
 
 api.interceptors.request.use(config => {
   const token = Cookies.get('token');
-  console.log('Attaching token to request:', token);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token is invalid or expired
+      Cookies.remove('token');
+      delete api.defaults.headers.common['Authorization'];
+      // Using window.location to redirect as this is outside React component lifecycle
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 
 // Auth
 export const login = (data: any) => api.post('/auth/login', data);
@@ -25,6 +41,6 @@ export const getConversation = (id: string) => api.get(`/conversations/${id}`);
 
 // Messages
 export const getMessages = (conversationId: string) => api.get(`/messages/${conversationId}`);
-export const sendMessage = (conversationId: string, content: string) => api.post(`/messages/${conversationId}`, { content });
+export const sendMessage = (conversationId: string, content: string, userId: string) => api.post(`/messages`, { conversationId, content, userId });
 
 export default api;

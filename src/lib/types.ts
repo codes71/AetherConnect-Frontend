@@ -1,16 +1,18 @@
 export type User = {
   id: string;
   name: string;
+  email: string;
   avatarUrl: string;
   isOnline?: boolean;
 };
 
 export type Message = {
   id: string;
-  text: string;
-  sender: User;
-  timestamp: string;
-  read?: boolean;
+  content: string;
+  createdAt: string;
+  userId: string;
+  conversationId: string;
+  user?: User;
 };
 
 export type Conversation = {

@@ -1,10 +1,10 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import { User } from '@/lib/types';
-import { getProfile } from '@/lib/api';
+import api, { getProfile } from '@/lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -21,24 +21,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    const token = Cookies.get('token');
-    if (token) {
-      getProfile()
-        .then(response => {
-          setUser(response.data);
-        })
-        .catch(() => {
-          Cookies.remove('token');
-          router.push('/login');
-        })
-        .finally(() => {
-          setIsLoading(false);
-        });
-    } else {
-      setIsLoading(false);
-    }
+  const logout = useCallback(() => {
+    Cookies.remove('token');
+    delete api.defaults.headers.common['Authorization'];
+    setUser(null);
+    router.push('/login');
   }, [router]);
+
+  useEffect(() => {
+    const initializeAuth = async () => {
+      const token = Cookies.get('token');
+      if (token) {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        try {
+          const response = await getProfile();
+          setUser(response.data);
+        } catch (error) {
+          console.error('Session expired or invalid, logging out.');
+          logout();
+        }
+      }
+      setIsLoading(false);
+    };
+
+    initializeAuth();
+  }, [logout]);
 
   const login = (token: string) => {
     Cookies.set('token', token, { expires: 7, secure: true }); // Expires in 7 days
@@ -47,13 +54,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(response.data);
       router.push('/chat');
     });
-  };
-
-  const logout = () => {
-    Cookies.remove('token');
-    delete api.defaults.headers.common['Authorization'];
-    setUser(null);
-    router.push('/login');
   };
 
   return (

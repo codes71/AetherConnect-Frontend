@@ -3,24 +3,23 @@
 import { useEffect, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import Cookies from 'js-cookie';
-import { Message, User } from '@/lib/types';
+import { Message, Conversation } from '@/lib/types';
 import { useAuth } from '@/context/auth-context';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
 
 export function useSocket() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (isAuthenticated) {
       const newSocket = io(SOCKET_URL, {
         auth: {
-          token: `Bearer ${Cookies.get('token')}`,
+          token: `${Cookies.get('token')}`,
         },
       });
 
@@ -30,10 +29,6 @@ export function useSocket() {
 
       newSocket.on('disconnect', () => {
         setIsConnected(false);
-      });
-
-      newSocket.on('newMessage', (message: Message) => {
-        setMessages((prevMessages) => [...prevMessages, message]);
       });
 
       newSocket.on('typing', (username: string) => {
@@ -50,7 +45,7 @@ export function useSocket() {
         newSocket.disconnect();
       };
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated]);
 
   const joinRoom = useCallback((roomId: string) => {
     socket?.emit('joinRoom', roomId);
@@ -72,13 +67,8 @@ export function useSocket() {
     socket?.emit('stopTyping', roomId);
   }, [socket]);
 
-  const clearMessages = useCallback(() => {
-    setMessages([]);
-  }, []);
-
   return {
     socket,
-    messages,
     typingUsers,
     isConnected,
     joinRoom,
@@ -86,7 +76,6 @@ export function useSocket() {
     sendMessage,
     startTyping,
     stopTyping,
-    clearMessages,
     conversations,
     setConversations,
   };
