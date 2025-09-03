@@ -2,11 +2,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   MessageSquare,
-  Users,
+  ShieldCheck,
   Bot,
-  Settings,
+  Server,
   UploadCloud,
   ArrowRight,
+  Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,29 +16,34 @@ import { Logo } from '@/components/logo';
 export default function LandingPage() {
   const features = [
     {
-      icon: <MessageSquare className="h-8 w-8 text-primary" />,
-      title: 'Direct Messaging',
-      description: 'Engage in private, real-time conversations with end-to-end security.',
+      icon: <Network className="h-8 w-8 text-primary" />,
+      title: 'Microservices Architecture',
+      description: 'Built with a scalable and resilient microservices architecture using Docker and Kubernetes.',
     },
     {
-      icon: <Users className="h-8 w-8 text-primary" />,
-      title: 'Group Chats',
-      description: 'Collaborate and socialize in customizable group chats with roles and permissions.',
+      icon: <MessageSquare className="h-8 w-8 text-primary" />,
+      title: 'Real-Time Messaging',
+      description: 'Engage in performant 1:1 and group chats with WebSockets and gRPC-based communication.',
     },
     {
       icon: <Bot className="h-8 w-8 text-primary" />,
-      title: 'AI Smart Replies',
-      description: 'Save time with context-aware reply suggestions powered by cutting-edge AI.',
+      title: 'AI-Powered Moderation',
+      description: 'Ensure a safe community with automated content moderation powered by Hugging Face transformers.',
+    },
+    {
+      icon: <ShieldCheck className="h-8 w-8 text-primary" />,
+      title: 'Enterprise Security',
+      description: 'Secure your data with JWT/OAuth2 authentication, end-to-end encryption, and RBAC.',
     },
     {
       icon: <UploadCloud className="h-8 w-8 text-primary" />,
-      title: 'File Sharing',
-      description: 'Securely share documents, images, and other files with your contacts.',
+      title: 'Secure File Sharing',
+      description: 'Securely share documents, images, and other files, backed by a robust, S3-compatible storage solution.',
     },
     {
-      icon: <Settings className="h-8 w-8 text-primary" />,
-      title: 'Customizable',
-      description: 'Personalize your experience with themes, notification settings, and more.',
+      icon: <Server className="h-8 w-8 text-primary" />,
+      title: 'Advanced Observability',
+      description: 'Full-stack monitoring with Prometheus, Grafana, and Jaeger for enterprise-grade system insights.',
     },
   ];
 
@@ -63,14 +69,14 @@ export default function LandingPage() {
       <main className="flex-1">
         <section className="container mx-auto flex flex-col items-center px-4 py-20 text-center md:py-32">
           <h1 className="text-4xl font-extrabold tracking-tight md:text-6xl">
-            The Future of Seamless Communication
+            Enterprise-Grade Chat, Built on Microservices
           </h1>
           <p className="mt-6 max-w-2xl text-lg text-muted-foreground">
-            Aether Connect provides a secure, fast, and intelligent platform for all your messaging needs, from one-on-one chats to large group collaborations.
+            AetherConnect is a real-time chat application built with a microservices architecture to demonstrate advanced system design, scalability, and fault tolerance.
           </p>
           <div className="mt-8 flex gap-4">
             <Button size="lg" asChild>
-              <Link href="/signup">Get Started for Free</Link>
+              <Link href="/signup">Get Started</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <Link href="#features">Learn More</Link>
@@ -82,10 +88,10 @@ export default function LandingPage() {
           <div className="container mx-auto px-4">
             <div className="mx-auto max-w-3xl text-center">
               <h2 className="text-3xl font-bold md:text-4xl">
-                Everything You Need to Connect
+                Advanced System Design Showcase
               </h2>
               <p className="mt-4 text-muted-foreground">
-                Discover the powerful features that make Aether Connect the ultimate messaging app.
+                Explore the production-ready features that make AetherConnect a powerful, scalable, and secure platform.
               </p>
             </div>
             <div className="mt-12 grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
@@ -107,32 +113,32 @@ export default function LandingPage() {
         <section className="container mx-auto px-4 py-20 md:py-32">
             <div className="grid items-center gap-12 md:grid-cols-2">
                 <div>
-                    <h2 className="text-3xl font-bold md:text-4xl">Powered by AI</h2>
+                    <h2 className="text-3xl font-bold md:text-4xl">Powered by a Modern Stack</h2>
                     <p className="mt-4 text-muted-foreground">
-                        Our intelligent system analyzes conversation context to provide you with relevant, one-tap replies. Spend less time typing and more time connecting.
+                        Leveraging NestJS for scalable backend services, gRPC for efficient communication, and Kafka for event-driven architecture, AetherConnect is built for performance.
                     </p>
                     <ul className="mt-6 space-y-4 text-muted-foreground">
                         <li className="flex items-center gap-2">
                             <CheckIcon className="h-5 w-5 text-primary" />
-                            <span>Context-aware suggestions</span>
+                            <span>Scalable, decoupled, and resilient services</span>
                         </li>
                         <li className="flex items-center gap-2">
                             <CheckIcon className="h-5 w-5 text-primary" />
-                            <span>Reduces repetitive typing</span>
+                            <span>High-performance with Redis caching and DB indexing</span>
                         </li>
                         <li className="flex items-center gap-2">
                             <CheckIcon className="h-5 w-5 text-primary" />
-                            <span>Adapts to your conversation style</span>
+                            <span>Real-time client-server communication with Socket.io</span>
                         </li>
                     </ul>
                 </div>
                 <Image
                     src="https://picsum.photos/600/400"
-                    alt="AI in action"
+                    alt="System architecture"
                     width={600}
                     height={400}
                     className="rounded-lg shadow-lg"
-                    data-ai-hint="ai abstract"
+                    data-ai-hint="system architecture"
                 />
             </div>
         </section>
