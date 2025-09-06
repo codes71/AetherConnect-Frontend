@@ -17,7 +17,8 @@ import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/context/auth-context';
 import { useState } from 'react';
-import { login as loginUser } from '@/lib/api';
+
+// Remove: import { login as loginUser } from '@/lib/api';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -40,10 +41,13 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginData) => {
     setError(null);
     try {
-      const response = await loginUser(data);
-      login(response.data.accessToken);
+      const success = await login(data.email, data.password); // Call AuthContext's login
+      if (!success) {
+        setError('Invalid email or password. Please try again.'); // AuthContext's login already shows toast
+      }
     } catch (err) {
-      setError('Invalid email or password. Please try again.');
+      // This catch block might not be reached if AuthContext's login handles errors internally
+      setError('An unexpected error occurred. Please try again.');
     }
   };
 

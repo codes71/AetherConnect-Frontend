@@ -16,31 +16,16 @@ interface ChatViewProps {
 export function ChatView({ conversationId }: ChatViewProps) {
   const { user } = useAuth();
   const {
-    socket,
+    realtimeMessages,
+    setRealtimeMessages,
     joinRoom,
     leaveRoom,
     sendMessage,
     startTyping,
     stopTyping,
   } = useSocket();
-  const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (socket) {
-      socket.on('newMessage', (message: Message) => {
-        if (message.conversationId === conversationId) {
-          setMessages((prevMessages) => [...prevMessages, message]);
-        }
-      });
-
-      return () => {
-        socket.off('newMessage');
-      };
-    }
-  }, [socket, conversationId]);
-
 
   useEffect(() => {
     const fetchConversationDetails = async () => {
@@ -48,26 +33,27 @@ export function ChatView({ conversationId }: ChatViewProps) {
         const convoResponse = await getConversation(conversationId);
         setConversation(convoResponse.data);
         const messagesResponse = await getMessages(conversationId);
-        setMessages(messagesResponse.data);
+        setRealtimeMessages(messagesResponse.data); // Set initial messages from API
       } catch (error) {
         console.error('Failed to fetch conversation details:', error);
       }
     };
     
+    setRealtimeMessages([]); // Clear messages when conversationId changes
     fetchConversationDetails();
     joinRoom(conversationId);
 
     return () => {
       leaveRoom(conversationId);
     };
-  }, [conversationId, joinRoom, leaveRoom]);
+  }, [conversationId, joinRoom, leaveRoom, setRealtimeMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [realtimeMessages]);
 
   const handleSendMessage = (content: string) => {
-    sendMessage(conversationId, content);
+    sendMessage({ roomId: conversationId, content });
   };
 
   if (!user || !conversation) {
@@ -77,7 +63,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
   return (
     <div className="flex flex-col h-full">
       <ChatHeader conversation={conversation} />
-      <MessageList messages={messages} currentUserId={user.id} />
+      <MessageList messages={realtimeMessages} currentUserId={user.id} />
       <div ref={messagesEndRef} />
       <div className="mt-auto p-4">
         <MessageInput

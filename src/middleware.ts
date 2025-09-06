@@ -1,22 +1,35 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 export function middleware(req: NextRequest) {
-  const token = req.cookies.get('token')?.value;
+  const accessToken = req.cookies.get("accessToken");
+  const refreshToken = req.cookies.get("refreshToken");
   const { pathname } = req.nextUrl;
 
-  // If the user is authenticated
-  if (token) {
-    // Redirect from login or signup to chat
-    if (pathname.startsWith('/login') || pathname.startsWith('/signup')) {
-      return NextResponse.redirect(new URL('/chat', req.url));
+  const isAuthenticated = !!accessToken || !!refreshToken;
+
+  // ✅ Authenticated user
+  if (isAuthenticated) {
+    console.log("Authenticated user accessing:", pathname);
+
+    // Redirect root → chat
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/chat", req.url));
     }
-  }
-  // If the user is not authenticated
-  else {
+
+    // Redirect login/signup → chat
+    if (pathname.startsWith("/login") || pathname.startsWith("/signup")) {
+      return NextResponse.redirect(new URL("/chat", req.url));
+    }
+  } else {
+    // ❌ Unauthenticated user
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+
     // Protect chat routes
-    if (pathname.startsWith('/chat')) {
-      return NextResponse.redirect(new URL('/login', req.url));
+    if (pathname.startsWith("/chat")) {
+      return NextResponse.redirect(new URL("/login", req.url));
     }
   }
 
@@ -24,5 +37,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/chat/:path*', '/login', '/signup'],
+  matcher: ["/", "/chat/:path*", "/login", "/signup"],
 };

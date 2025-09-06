@@ -1,6 +1,20 @@
+
+'use client';
+
+import { useEffect } from 'react';
 import { MessageSquare } from 'lucide-react';
+import { useAuth } from '@/context/auth-context';
 
 export default function ChatHomePage() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      console.log('User in /chat:', user);
+    }
+  }, [user]);
+
+  console.log('Rendering ChatHomePage');
   return (
     <div className="flex h-full flex-col items-center justify-center bg-secondary">
       <div className="flex flex-col items-center text-center">

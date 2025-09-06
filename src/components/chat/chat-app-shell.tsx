@@ -1,7 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { usePathname } from 'next/navigation';
+import type { ReactNode } from 'react'
 import Link from 'next/link';
 import {
   Sidebar,
@@ -9,10 +8,7 @@ import {
   SidebarGroup,
   SidebarHeader,
   SidebarInset,
-  SidebarItem,
   SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
@@ -22,7 +18,6 @@ import {
   AvatarFallback,
   AvatarImage,
 } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
@@ -34,39 +29,29 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
-import { ThemeToggle } from '@/components/theme-toggle';
 import {
   Search,
   Settings,
   LogOut,
-  Users,
-  MessageSquare,
   ChevronDown,
 } from 'lucide-react';
-import type { Conversation } from '@/lib/types';
 import { useAuth } from '@/context/auth-context';
-import { useSocket } from '@/hooks/use-socket';
-import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
-import { getConversations } from '@/lib/api';
+import { useSocket } from '@/hooks/use-socket';
 
 export function ChatAppShell({
   children,
 }: {
   children: ReactNode;
 }) {
-  const pathname = usePathname();
   const { isMobile } = useSidebar();
   const { user, logout } = useAuth();
-  const { conversations, setConversations } = useSocket();
+  const { isConnected } = useSocket(); // Call useSocket here
   const [isLoading, setIsLoading] = useState(true);
-
+  
   useEffect(() => {
-    getConversations().then(response => {
-      setConversations(response.data);
-      setIsLoading(false);
-    });
-  }, [setConversations]);
+    setIsLoading(false); // Set isLoading to false directly after user check
+  }, []);
 
   const getInitials = (name: string) => {
     return name
@@ -75,9 +60,16 @@ export function ChatAppShell({
       .join('');
   };
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return <div>Loading...</div>;
   }
+
+  if (!user) {
+    // You can render a login button or a redirect here
+    return <div>Please log in to continue.</div>;
+  }
+
+  const name = `${user.firstName} ${user.lastName}`.trim();
 
   return (
     <>
@@ -102,6 +94,8 @@ export function ChatAppShell({
           </SidebarHeader>
 
           <SidebarMenu className="flex-1 px-2 space-y-1">
+            {/* Conversations are currently not implemented */}
+            {/*
             {conversations.map((convo) => {
               const isActive = pathname.includes(convo.id);
               return (
@@ -145,6 +139,7 @@ export function ChatAppShell({
                 </SidebarMenuItem>
               );
             })}
+            */}
           </SidebarMenu>
           <SidebarSeparator />
           <SidebarGroup>
@@ -152,14 +147,11 @@ export function ChatAppShell({
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="w-full justify-start gap-2 px-2">
                     <Avatar className="h-8 w-8">
-                        <AvatarImage src={user.avatarUrl} alt={user.name} />
-                        <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                        <AvatarImage src={undefined} alt={name} />
+                        <AvatarFallback>{getInitials(user.username)}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col items-start">
-                        <span>{user.name}</span>
-                        <span className={cn("text-xs", user.isOnline ? "text-green-500" : "text-muted-foreground")}>
-                            {user.isOnline ? "Online" : "Offline"}
-                        </span>
+                        <span>{name}</span>
                     </div>
                     <ChevronDown className="ml-auto h-4 w-4" />
                 </Button>
@@ -167,7 +159,7 @@ export function ChatAppShell({
               <DropdownMenuContent className="w-56 mb-2" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{user.name}</p>
+                    <p className="text-sm font-medium leading-none">{name}</p>
                     <p className="text-xs leading-none text-muted-foreground">
                       {user.email}
                     </p>

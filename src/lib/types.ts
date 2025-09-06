@@ -1,8 +1,14 @@
 export type User = {
   id: string;
-  name: string;
+  username: string;
   email: string;
-  avatarUrl: string;
+  roles: string[];
+  firstName: string;
+  lastName: string;
+  createdAt: string;
+  updatedAt: string;
+  name?: string;
+  avatarUrl?: string;
   isOnline?: boolean;
 };
 
@@ -11,7 +17,9 @@ export type Message = {
   content: string;
   createdAt: string;
   userId: string;
-  conversationId: string;
+  roomId: string; // Changed from conversationId
+  messageType?: string; // Added
+  status?: 'pending' | 'sent' | 'failed'; // Added
   user?: User;
 };
 

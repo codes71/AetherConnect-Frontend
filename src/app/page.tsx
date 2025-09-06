@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Logo } from '@/components/logo';
+import { CheckIcon } from '@/components/ui/icons';
 
 export default function LandingPage() {
   const features = [
@@ -131,6 +132,7 @@ export default function LandingPage() {
                             <span>Real-time client-server communication with Socket.io</span>
                         </li>
                     </ul>
+                    
                 </div>
                 <Image
                     src="https://picsum.photos/seed/aetherconnect/600/400"
@@ -159,4 +161,4 @@ export default function LandingPage() {
   );
 }
 
-import { CheckIcon } from '@/components/ui/icons';
+
