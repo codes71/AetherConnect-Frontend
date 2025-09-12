@@ -1,29 +1,26 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { ChatView } from '@/components/chat/chat-view';
+import { useSelectedRoom } from '@/context/selected-room-context';
 import { MessageSquare } from 'lucide-react';
-import { useAuth } from '@/context/auth-context';
 
-export default function ChatHomePage() {
-  const { user } = useAuth();
+export default function ChatPage() {
+  const { selectedRoomId } = useSelectedRoom();
 
-  useEffect(() => {
-    if (user) {
-      console.log('User in /chat:', user);
-    }
-  }, [user]);
+  if (!selectedRoomId) {
+    return (
+        <div className="flex h-full flex-col items-center justify-center bg-secondary">
+            <div className="flex flex-col items-center text-center">
+                <MessageSquare className="h-16 w-16 text-muted-foreground" />
+                <h1 className="mt-4 text-2xl font-semibold">Welcome to Aether Connect</h1>
+                <p className="mt-2 text-muted-foreground">
+                    Select a conversation from the sidebar to start messaging.
+                </p>
+            </div>
+        </div>
+    );
+  }
 
-  console.log('Rendering ChatHomePage');
-  return (
-    <div className="flex h-full flex-col items-center justify-center bg-secondary">
-      <div className="flex flex-col items-center text-center">
-        <MessageSquare className="h-16 w-16 text-muted-foreground" />
-        <h1 className="mt-4 text-2xl font-semibold">Welcome to Aether Connect</h1>
-        <p className="mt-2 text-muted-foreground">
-          Select a conversation from the sidebar to start messaging.
-        </p>
-      </div>
-    </div>
-  );
+  return <ChatView conversationId={selectedRoomId} />;
 }

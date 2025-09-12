@@ -11,6 +11,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
+  register: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshAuth: () => Promise<void>;
 }
@@ -29,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setIsLoading(true);
       const response = await api.auth.getProfile();
-      if (response.data?.user) {
+      if (response.data.success) {
         setUser(response.data.user);
       } else {
         setUser(null);
@@ -84,6 +85,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [loadUser, toast]);
 
+  const register = useCallback(async (name: string, email: string, password: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      const response = await api.auth.register({ name, email, password });
+      if (response.data.success) {
+        await loadUser();
+        toast({
+          title: 'Registration successful',
+          description: 'Welcome!',
+        });
+        return true;
+      } else {
+        toast({
+          title: 'Registration failed',
+          description: response.data.message || 'Please check your details',
+          variant: 'destructive',
+        });
+        return false;
+      }
+    } catch (error: any) {
+      console.error('Registration error:', error.response?.data || error.message || error);
+      toast({
+        title: 'Registration failed',
+        description: error.response?.data?.message || 'A network error occurred',
+        variant: 'destructive',
+      });
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadUser, toast]);
+
   const logout = useCallback(async () => {
     try {
       await api.auth.logout();
@@ -122,7 +155,7 @@ const refreshAuth = useCallback(async () => {
   }, [loadUser, router, toast]);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, isLoading, refreshAuth }}>
+    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user, isLoading, refreshAuth }}>
       {children}
     </AuthContext.Provider>
   );

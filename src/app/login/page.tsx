@@ -16,9 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/context/auth-context';
-import { useState } from 'react';
-
-// Remove: import { login as loginUser } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -28,7 +27,8 @@ const loginSchema = z.object({
 type LoginData = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const {
     register,
@@ -42,7 +42,9 @@ export default function LoginPage() {
     setError(null);
     try {
       const success = await login(data.email, data.password); // Call AuthContext's login
-      if (!success) {
+      if (success) {
+        router.push('/chat');
+      } else {
         setError('Invalid email or password. Please try again.'); // AuthContext's login already shows toast
       }
     } catch (err) {
@@ -50,6 +52,12 @@ export default function LoginPage() {
       setError('An unexpected error occurred. Please try again.');
     }
   };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/chat');
+    }
+  }, [isAuthenticated, router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary">

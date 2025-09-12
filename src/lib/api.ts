@@ -8,12 +8,18 @@ interface AuthApi {
   getProfile: () => Promise<any>;
   logout: () => Promise<any>;
   refreshToken: () => Promise<any>;
-  getWsToken: () => Promise<any>; // Added
+  getWsToken: () => Promise<any>;
+}
+
+interface MessageApi {  
+  getRooms: () => Promise<any>;
+  getMessages: (roomId: string, page: number, limit: number) => Promise<any>;
 }
 
 class ApiClient {
   private axiosInstance: AxiosInstance;
   public auth!: AuthApi;
+  public message!: MessageApi; // Added
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -99,7 +105,12 @@ class ApiClient {
       getProfile: () => this.axiosInstance.get("/auth/profile"),
       logout: () => this.axiosInstance.post("/auth/logout"),
       refreshToken: () => this.axiosInstance.post("/auth/refresh"),
-      getWsToken: () => this.axiosInstance.get("/auth/ws-token"), // Added
+      getWsToken: () => this.axiosInstance.get("/auth/ws-token"),
+    };
+
+    this.message = {
+      getRooms: () => this.axiosInstance.get('/rooms'),
+            getMessages: (roomId: string, page: number = 1, limit: number = 50) => this.axiosInstance.get(`/rooms/${roomId}/messages`, { params: { page, limit } }),
     };
   }
 }

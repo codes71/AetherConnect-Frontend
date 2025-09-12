@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useSocket } from '@/hooks/use-socket';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useSocketContext } from '@/context/socket-context';
 import { MessageInput } from '@/components/chat/message-input';
 import { MessageList } from '@/components/chat/message-list';
 import { useAuth } from '@/context/auth-context';
-import { getMessages, getConversation } from '@/lib/api';
-import { Conversation, Message } from '@/lib/types';
+import { Room } from '@/lib/types';
 import { ChatHeader } from './chat-header';
+import { useMessageHistory } from '@/hooks/use-message-history';
+import { useRooms } from '@/context/room-context';
 
 interface ChatViewProps {
   conversationId: string;
@@ -16,62 +17,118 @@ interface ChatViewProps {
 export function ChatView({ conversationId }: ChatViewProps) {
   const { user } = useAuth();
   const {
-    realtimeMessages,
-    setRealtimeMessages,
-    joinRoom,
-    leaveRoom,
-    sendMessage,
-    startTyping,
-    stopTyping,
-  } = useSocket();
-  const [conversation, setConversation] = useState<Conversation | null>(null);
+    data: { realtimeMessages, isConnected },
+    actions: { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, clearMessages },
+  } = useSocketContext();
+  
+  const { historyMessages, isLoadingHistory, loadMoreHistory, hasMore } = useMessageHistory(conversationId);
+  const { findRoomById } = useRooms();
+  
+  const [room, setRoom] = useState<Room | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const currentRoomRef = useRef<string | null>(null);
 
+  // Memoize room lookup
+  const roomDetails = useMemo(() => {
+    return findRoomById(conversationId);
+  }, [findRoomById, conversationId]);
+
+  // Handle room changes - FIXED: Remove unstable dependencies
   useEffect(() => {
-    const fetchConversationDetails = async () => {
-      try {
-        const convoResponse = await getConversation(conversationId);
-        setConversation(convoResponse.data);
-        const messagesResponse = await getMessages(conversationId);
-        setRealtimeMessages(messagesResponse.data); // Set initial messages from API
-      } catch (error) {
-        console.error('Failed to fetch conversation details:', error);
+    if (!conversationId || !isConnected) return;
+
+    // Only change rooms if it's actually different
+    if (currentRoomRef.current === conversationId) return;
+
+    // Leave previous room
+    if (currentRoomRef.current) {
+      leaveRoom(currentRoomRef.current);
+    }
+
+    // Join new room
+    setRoom(roomDetails || null);
+    clearMessages();
+    joinRoom(conversationId);
+    currentRoomRef.current = conversationId;
+
+    // Cleanup on unmount only
+    return () => {
+      if (currentRoomRef.current) {
+        leaveRoom(currentRoomRef.current);
+        currentRoomRef.current = null;
       }
     };
+  }, [conversationId, isConnected]); // ← Only stable dependencies
+
+  // Update room details when room data changes
+  useEffect(() => {
+    setRoom(roomDetails || null);
+  }, [roomDetails]);
+
+  // Combine messages
+  const allMessages = useMemo(() => {
+    const combined = [...historyMessages, ...realtimeMessages];
+    const uniqueMessages = Array.from(new Set(combined.map(m => m.id)))
+      .map(id => combined.find(m => m.id === id)!)
+      .filter(Boolean);
     
-    setRealtimeMessages([]); // Clear messages when conversationId changes
-    fetchConversationDetails();
-    joinRoom(conversationId);
+    return uniqueMessages.sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }, [historyMessages, realtimeMessages]);
 
-    return () => {
-      leaveRoom(conversationId);
-    };
-  }, [conversationId, joinRoom, leaveRoom, setRealtimeMessages]);
-
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [realtimeMessages]);
+  }, [allMessages]);
 
-  const handleSendMessage = (content: string) => {
-    sendMessage({ roomId: conversationId, content });
-  };
+  // Stable event handlers
+  const handleSendMessage = useCallback((content: string) => {
+    if (conversationId && content.trim()) {
+      sendMessage({ roomId: conversationId, content: content.trim() });
+    }
+  }, [conversationId, sendMessage]);
 
-  if (!user || !conversation) {
-    return <div>Loading...</div>;
+  const handleTypingStart = useCallback(() => {
+    if (conversationId) {
+      startTyping(conversationId);
+    }
+  }, [conversationId, startTyping]);
+
+  const handleTypingStop = useCallback(() => {
+    if (conversationId) {
+      stopTyping(conversationId);
+    }
+  }, [conversationId, stopTyping]);
+
+  if (!user) {
+    return <div className="flex items-center justify-center h-full">Please log in to access chat.</div>;
+  }
+
+  if (!room) {
+    return <div className="flex items-center justify-center h-full">Room not found or loading...</div>;
   }
 
   return (
     <div className="flex flex-col h-full">
-      <ChatHeader conversation={conversation} />
-      <MessageList messages={realtimeMessages} currentUserId={user.id} />
-      <div ref={messagesEndRef} />
-      <div className="mt-auto p-4">
-        <MessageInput
-          onSendMessage={handleSendMessage}
-          onTypingStart={() => startTyping(conversationId)}
-          onTypingStop={() => stopTyping(conversationId)}
+      <ChatHeader room={room} />
+      
+      <div className="flex-1 overflow-hidden">
+        <MessageList 
+          messages={allMessages}
+          currentUserId={user.id}
+          isLoading={isLoadingHistory}
+          onLoadMore={hasMore ? loadMoreHistory : undefined}
         />
+        <div ref={messagesEndRef} />
       </div>
+
+      <MessageInput
+        onSendMessage={handleSendMessage}
+        onTypingStart={handleTypingStart}
+        onTypingStop={handleTypingStop}
+        disabled={!isConnected}
+      />
     </div>
   );
 }

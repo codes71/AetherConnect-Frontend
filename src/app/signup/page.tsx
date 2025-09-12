@@ -16,8 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/logo';
 import { useAuth } from '@/context/auth-context';
-import { useState } from 'react';
-import { register as registerUser } from '@/lib/api';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 const signupSchema = z.object({
@@ -29,7 +28,7 @@ const signupSchema = z.object({
 type SignupData = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
-  const { login } = useAuth();
+  const { register: registerUser, isAuthenticated } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const {
@@ -43,13 +42,22 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupData) => {
     setError(null);
     try {
-      const response = await registerUser(data);
-      login(response.data.token);
-      router.push('/chat');
+      const success = await registerUser(data.name, data.email, data.password);
+      if (success) {
+        router.push('/chat');
+      } else {
+        setError('Failed to create an account. Please try again.');
+      }
     } catch (err) {
-      setError('Failed to create an account. Please try again.');
+      setError('An unexpected error occurred. Please try again.');
     }
   };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/chat');
+    }
+  }, [isAuthenticated, router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary">

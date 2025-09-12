@@ -1,7 +1,7 @@
 'use client';
 
-import type { ReactNode } from 'react'
-import Link from 'next/link';
+import { ReactNode } from 'react'
+import { usePathname } from 'next/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -9,6 +9,8 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
@@ -36,8 +38,8 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
-import { useEffect, useState } from 'react';
-import { useSocket } from '@/hooks/use-socket';
+import { useRooms } from '@/context/room-context';
+import { useSelectedRoom } from '@/context/selected-room-context';
 
 export function ChatAppShell({
   children,
@@ -45,22 +47,11 @@ export function ChatAppShell({
   children: ReactNode;
 }) {
   const { isMobile } = useSidebar();
-  const { user, logout } = useAuth();
-  const { isConnected } = useSocket(); // Call useSocket here
-  const [isLoading, setIsLoading] = useState(true);
-  
-  useEffect(() => {
-    setIsLoading(false); // Set isLoading to false directly after user check
-  }, []);
+  const { user, logout, isLoading: isAuthLoading } = useAuth();
+  const { rooms, isLoading: areRoomsLoading } = useRooms();
+  const { selectedRoomId, setSelectedRoomId } = useSelectedRoom();
 
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('');
-  };
-
-  if (isLoading) {
+  if (isAuthLoading || areRoomsLoading) {
     return <div>Loading...</div>;
   }
 
@@ -69,7 +60,8 @@ export function ChatAppShell({
     return <div>Please log in to continue.</div>;
   }
 
-  const name = `${user.firstName} ${user.lastName}`.trim();
+  const name = user.username;
+  const initials = name.substring(0, 2).toUpperCase();
 
   return (
     <>
@@ -94,52 +86,43 @@ export function ChatAppShell({
           </SidebarHeader>
 
           <SidebarMenu className="flex-1 px-2 space-y-1">
-            {/* Conversations are currently not implemented */}
-            {/*
-            {conversations.map((convo) => {
-              const isActive = pathname.includes(convo.id);
+            {rooms.map((room) => {
+              const isActive = selectedRoomId === room.id;
               return (
-                <SidebarMenuItem key={convo.id} className="relative">
-                  <Link href={`/chat/${convo.id}`} className="w-full">
+                <SidebarMenuItem key={room.id} className="relative" onClick={() => setSelectedRoomId(room.id)}>
                     <SidebarMenuButton
                       isActive={isActive}
                       className="justify-start h-auto py-3"
                       tooltip={{
-                        children: convo.name,
+                        children: room.name,
                         side: 'right',
                         align: 'center',
                       }}
                     >
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={convo.avatarUrl} alt={convo.name} />
+                        <AvatarImage src={'/placeholder-avatar.png'} alt={room.name} />
                         <AvatarFallback>
-                          {getInitials(convo.name)}
+                          {room.name.substring(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex flex-1 flex-col items-start text-left w-0">
                         <div className="flex justify-between w-full items-center">
-                          <span className="font-semibold truncate">{convo.name}</span>
+                          <span className="font-semibold truncate">{room.name}</span>
                            <span className="text-xs text-muted-foreground">
-                            {convo.lastMessageTimestamp}
+                            {/* Display last message timestamp here */}
                           </span>
                         </div>
                         <div className="flex justify-between w-full items-center">
                           <span className="text-xs text-muted-foreground truncate">
-                            {convo.lastMessage}
+                            {/* Display last message here */}
                           </span>
-                           {convo.unreadCount && convo.unreadCount > 0 ? (
-                            <Badge className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full p-0">
-                              {convo.unreadCount}
-                            </Badge>
-                          ) : null}
+                           {/* Display unread count here */}
                         </div>
                       </div>
                     </SidebarMenuButton>
-                  </Link>
                 </SidebarMenuItem>
               );
             })}
-            */}
           </SidebarMenu>
           <SidebarSeparator />
           <SidebarGroup>
@@ -148,7 +131,7 @@ export function ChatAppShell({
                 <Button variant="ghost" className="w-full justify-start gap-2 px-2">
                     <Avatar className="h-8 w-8">
                         <AvatarImage src={undefined} alt={name} />
-                        <AvatarFallback>{getInitials(user.username)}</AvatarFallback>
+                        <AvatarFallback>{initials}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col items-start">
                         <span>{name}</span>
@@ -167,7 +150,7 @@ export function ChatAppShell({
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                    <Link href="/chat/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link>
+                    {/* <Link href="/chat/settings"><Settings className="mr-2 h-4 w-4" /><span>Settings</span></Link> */}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>

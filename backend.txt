@@ -1,0 +1,322 @@
+
+# Aetherconnect Backend Architecture
+
+This document provides a detailed overview of the Aetherconnect backend architecture for the frontend development team.
+
+## 1. High-Level Overview
+
+The backend is built using a microservices architecture. Each service is a containerized NestJS application. The main services are:
+
+-   **API Gateway**: The single entry point for all client-side HTTP requests. It handles routing, authentication, and rate limiting.
+-   **Auth Service**: Manages user authentication, registration, and user profiles.
+-   **Message Service**: Handles real-time messaging via WebSockets, message persistence, and room management.
+-   **PostgreSQL**: A relational database for the Auth Service.
+-   **Redis**: An in-memory data store used for the WebSocket adapter to enable multi-instance communication.
+
+## 2. Service Details
+
+| Service           | Host Port | Internal Port(s) | Description                                                                                                                              |
+| ----------------- | --------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| API Gateway       | `3000`    | `3000` (HTTP)    | Main entry point for all REST API calls from the frontend. Communicates with other services via gRPC.                                    |
+| Auth Service      | `50001`   | `50001` (gRPC)   | Handles user authentication and data. Not directly accessible from the frontend.                                                         |
+| Message Service   | `3002`    | `3002` (HTTP/WS) | Handles WebSocket connections for real-time messaging. Also exposes a gRPC port for internal communication with the API Gateway.         |
+| PostgreSQL        | `5433`    | `5432`           | Database for the Auth Service.                                                                                                           |
+| Redis             | `6379`    | `6379`           | Used by the Message Service for WebSocket scaling.                                                                                       |
+
+## 3. Authentication Flow
+
+Authentication is cookie-based to enhance security (HttpOnly cookies prevent XSS attacks).
+
+1.  **Registration**: `POST /api/auth/register`
+    -   The frontend sends user registration data.
+    -   The API Gateway forwards this to the Auth Service.
+    -   On success, `accessToken` and `refreshToken` are set as HttpOnly cookies.
+
+2.  **Login**: `POST /api/auth/login`
+    -   The frontend sends user credentials.
+    -   The API Gateway validates them with the Auth Service.
+    -   On success, `accessToken` (15-minute expiry) and `refreshToken` (7-day expiry) are set as HttpOnly cookies.
+
+3.  **Authenticated Requests**:
+    -   For any subsequent HTTP request to a protected endpoint, the browser will automatically send the `accessToken` cookie.
+    -   The API Gateway validates this token.
+
+4.  **Token Refresh**: `POST /api/auth/refresh`
+    -   If the `accessToken` expires, the frontend should call this endpoint.
+    -   The API Gateway uses the `refreshToken` (which should still be valid) to generate a new `accessToken` and sets it as a new cookie.
+
+5.  **Logout**: `POST /api/auth/logout`
+    -   This endpoint clears the `accessToken` and `refreshToken` cookies.
+
+## 4. WebSocket Communication
+
+1.  **Get WebSocket Token**:
+    -   Before establishing a WebSocket connection, the frontend must get a temporary WebSocket token.
+    -   Make a `GET` request to `/api/auth/ws-token` (this is a protected route, so a valid `accessToken` cookie is required).
+    -   This will return a short-lived token.
+
+2.  **Connect to WebSocket Server**:
+    -   Connect to the Message Service at `ws://localhost:3002`.
+    -   Pass the WebSocket token in the `auth` payload of the Socket.io client:
+        ```javascript
+        import { io } from "socket.io-client";
+
+        const wsToken = "your_ws_token_from_api";
+
+        const socket = io("ws://localhost:3002", {
+          auth: {
+            token: wsToken,
+          },
+        });
+        ```
+
+3.  **WebSocket Events**:
+    -   **Listen for `connected`**: On successful connection.
+    -   **Listen for `error`**: If the connection fails or an error occurs.
+    -   **Emit `join_room`**: To join a chat room. Payload: `{ roomId: string }`.
+    -   **Listen for `new_message`**: When a new message is received.
+    -   **Emit `send_message`**: To send a message. Payload: `{ roomId: string, content: string }`.
+    -   **Emit `typing_start` / `typing_stop`**: For typing indicators. Payload: `{ roomId: string }`.
+
+## 5. API Endpoints (API Gateway)
+
+-   `POST /api/auth/register`: Create a new user.
+    -   **Success Response (201)**
+        ```json
+        {
+          "success": true,
+          "message": "User created successfully",
+          "user": {
+            "id": "1",
+            "username": "john_doe",
+            "email": "john@example.com",
+            "firstName": "John",
+            "lastName": "Doe",
+            "name": "John Doe",
+            "roles": ["user"],
+            "createdAt": "2023-10-27T10:00:00.000Z",
+            "updatedAt": "2023-10-27T10:00:00.000Z"
+          }
+        }
+        ```
+    -   **Error Response (400)**
+        ```json
+        {
+          "success": false,
+          "message": "User with this email or username already exists"
+        }
+        ```
+
+-   `POST /api/auth/login`: Log in and get auth cookies.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "Login successful",
+          "user": { ... },
+          "accessToken": "...",
+          "refreshToken": "..."
+        }
+        ```
+    -   **Error Response (401)**
+        ```json
+        {
+          "success": false,
+          "message": "Invalid credentials"
+        }
+        ```
+
+-   `POST /api/auth/refresh`: Refresh the `accessToken`.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "Token refreshed successfully"
+        }
+        ```
+    -   **Error Response (401)**
+        ```json
+        {
+          "success": false,
+          "message": "Invalid refresh token"
+        }
+        ```
+
+-   `POST /api/auth/logout`: Log out and clear auth cookies.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "Logged out successfully"
+        }
+        ```
+
+-   `GET /api/auth/ws-token`: (Protected) Get a temporary token for WebSocket connection.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "token": "your_short_lived_ws_token"
+        }
+        ```
+    -   **Error Response (401)**
+        ```json
+        {
+          "statusCode": 401,
+          "message": "Unauthorized"
+        }
+        ```
+
+-   `GET /api/auth/profile`: (Protected) Get the current user's profile.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "User profile retrieved successfully",
+          "user": { ... }
+        }
+        ```
+    -   **Error Response (401)**
+        ```json
+        {
+          "statusCode": 401,
+          "message": "Unauthorized"
+        }
+        ```
+
+-   `PUT /api/auth/profile`: (Protected) Update the current user's profile.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "User profile updated successfully",
+          "user": { ... }
+        }
+        ```
+    -   **Error Response (400)**
+        ```json
+        {
+          "success": false,
+          "message": "Failed to update user profile"
+        }
+        ```
+
+-   `GET /api/rooms`: (Protected) Get all rooms for the current user.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "Rooms retrieved successfully",
+          "rooms": [
+            {
+              "id": "635a5e3b8bb9e8b3c8e9f5d2",
+              "name": "general",
+              "description": "General discussion room",
+              "roomType": "public",
+              "createdBy": "system",
+              "members": ["1", "2"],
+              "createdAt": "2023-10-27T10:00:00.000Z",
+              "updatedAt": "2023-10-27T10:00:00.000Z"
+            }
+          ]
+        }
+        ```
+    -   **No Rooms Joined Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "No rooms joined yet.",
+          "rooms": []
+        }
+        ```
+
+-   `GET /api/rooms/:roomId/messages`: (Protected) Get message history for a room.
+    -   **Success Response (200)**
+        ```json
+        {
+          "success": true,
+          "message": "Message history retrieved successfully",
+          "messages": [
+            {
+              "id": "635a5e3b8bb9e8b3c8e9f5d3",
+              "userId": "1",
+              "username": "John Doe",
+              "roomId": "635a5e3b8bb9e8b3c8e9f5d2",
+              "content": "Hello, world!",
+              "messageType": "text",
+              "metadata": null,
+              "createdAt": "2023-10-27T10:01:00.000Z",
+              "updatedAt": "2023-10-27T10:01:00.000Z"
+            }
+          ],
+          "pagination": {
+            "currentPage": 1,
+            "totalPages": 1,
+            "totalItems": 1,
+            "itemsPerPage": 50,
+            "hasNext": false,
+            "hasPrevious": false
+          }
+        }
+        ```
+    -   **Error Response (404)**
+        ```json
+        {
+          "success": false,
+          "message": "Room not found"
+        }
+        ```
+
+## 6. Backend Mind Map
+
+```
+Aetherconnect Backend
+
+├─── Client (localhost:3004)
+│    │
+│    ├─── HTTP Requests (REST API)
+│    │    │
+│    │    └───> API Gateway (localhost:3000)
+│    │          │
+│    │          ├─── Auth Routes (/api/auth)
+│    │          │    │
+│    │          │    ├─── Register, Login, Logout, Refresh
+│    │          │    │    │
+│    │          │    │    └───> Auth Service (gRPC on 50001)
+│    │          │    │         │
+│    │          │    │         └───> PostgreSQL (port 5433)
+│    │          │    │
+│    │          │    └─── Get WS Token (Protected)
+│    │          │         │
+│    │          │         └───> Auth Service (gRPC on 50001)
+│    │          │
+│    │          └─── Room Routes (/api/rooms)
+│    │               │
+│    │               └───> Message Service (gRPC on 50002)
+│    │                    │
+│    │                    └───> MongoDB Atlas
+│    │
+│    └─── WebSocket Connection (Socket.io)
+│         │
+│         └───> Message Service (localhost:3002)
+│               │
+│               ├─── Connection Handling (Token Auth)
+│               │    │
+│               │    └───> Auth Service (gRPC on 50001)
+│               │
+│               ├─── Room Management (Join, Leave)
+│               │
+│               ├─── Message Handling (Send, Typing)
+│               │    │
+│               │    └───> Broadcast to Room Members
+│               │
+│               └─── Redis (for Socket.io Adapter)
+│
+└─── Services
+     │
+     ├─── API Gateway (NestJS)
+     ├─── Auth Service (NestJS, gRPC)
+     ├─── Message Service (NestJS, gRPC, Socket.io)
+     ├─── PostgreSQL
+     └─── Redis
+```
