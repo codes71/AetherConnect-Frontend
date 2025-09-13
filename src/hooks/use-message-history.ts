@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { Message } from '@/lib/types';
 import api from '@/lib/api';
 
-const MESSAGE_LIMIT = 50;
+const MESSAGE_LIMIT = 20; // Changed from 50 to 20
 
 export const useMessageHistory = (roomId: string) => {
   const [historyMessages, setHistoryMessages] = useState<Message[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [hasLoadedInitial, setHasLoadedInitial] = useState(false);
 
   const fetchHistory = useCallback(async (currentPage: number, currentRoomId: string) => {
     if (!currentRoomId) return;
@@ -33,17 +34,22 @@ export const useMessageHistory = (roomId: string) => {
     }
   }, []);
 
+  // Load initial messages only once per room
   useEffect(() => {
+    // Always clear messages when room changes - CRITICAL for privacy
     setHistoryMessages([]);
     setPage(1);
     setHasMore(true);
+    setHasLoadedInitial(false);
+    
     if (roomId) {
+      setHasLoadedInitial(true);
       fetchHistory(1, roomId);
     }
   }, [roomId, fetchHistory]);
 
   const loadMoreHistory = useCallback(() => {
-    if (isLoadingHistory || !hasMore) return;
+    if (isLoadingHistory || !hasMore || !roomId) return;
     const nextPage = page + 1;
     setPage(nextPage);
     fetchHistory(nextPage, roomId);

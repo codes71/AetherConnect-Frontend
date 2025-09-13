@@ -127,7 +127,7 @@ export const useSocket = () => {
 
     socket.on("connected", (data) => {
       console.log("🎯 Socket.io authentication successful:", data);
-      // toast({ title: "Connected", description: "Connected to chat server" });
+      // Connection status now shown in header instead of toast
     });
 
     socket.on("disconnect", (reason) => {
@@ -165,21 +165,13 @@ export const useSocket = () => {
     });
 
     socket.on("user_joined", (data) => {
-      if (data.userId !== user?.id) {
-        toast({ 
-          title: "User joined", 
-          description: `${data.username} joined the room` 
-        });
-      }
+      console.log("👋 User joined:", data.username);
+      // Removed toast notification for cleaner UX
     });
 
     socket.on("user_left", (data) => {
-      if (data.userId !== user?.id) {
-        toast({ 
-          title: "User left", 
-          description: `${data.username} left the room` 
-        });
-      }
+      console.log("👋 User left:", data.username);
+      // Removed toast notification for cleaner UX
     });
 
     socket.on("user_typing", (data) => {
@@ -197,7 +189,8 @@ export const useSocket = () => {
 
   // Connection management
   const connectSocket = useCallback(async () => {
-    if (socketRef.current?.connected || !isAuthenticated || isUnmountingRef.current) {
+    if (socketRef.current?.connected || !isAuthenticated || isUnmountingRef.current || connectionState === 'connecting') {
+      console.log("🔌 Skipping connection - already connected/connecting or not authenticated");
       return;
     }
 
@@ -246,12 +239,7 @@ export const useSocket = () => {
       setConnectionState('disconnected');
       setLastError(error instanceof Error ? error.message : 'Connection failed');
       
-      toast({ 
-        title: "Connection failed", 
-        description: "Failed to connect to chat server", 
-        variant: "destructive" 
-      });
-      
+      // Connection status now shown in header instead of toast
       if (!isUnmountingRef.current) {
         handleReconnection();
       }
@@ -260,8 +248,9 @@ export const useSocket = () => {
 
   // Reconnection logic
   const handleReconnection = useCallback(() => {
-    if (reconnectAttempts >= maxReconnectAttempts || isUnmountingRef.current) {
+    if (reconnectAttempts >= maxReconnectAttempts || isUnmountingRef.current || connectionState === 'connecting') {
       if (reconnectAttempts >= maxReconnectAttempts) {
+        console.log("❌ Max reconnection attempts reached");
         toast({
           title: "Connection failed",
           description: "Unable to reconnect after multiple attempts",
@@ -275,12 +264,12 @@ export const useSocket = () => {
     console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1})`);
     
     reconnectTimeoutRef.current = setTimeout(() => {
-      if (isAuthenticated && !isUnmountingRef.current) {
+      if (isAuthenticated && !isUnmountingRef.current && connectionState !== 'connecting') {
         setReconnectAttempts(prev => prev + 1);
         connectSocket();
       }
     }, delay);
-  }, [reconnectAttempts, isAuthenticated, connectSocket, toast]);
+  }, [reconnectAttempts, isAuthenticated, connectionState, connectSocket, toast]);
 
   // Cleanup
   const cleanup = useCallback(() => {
@@ -369,14 +358,14 @@ export const useSocket = () => {
     }
 
     socketRef.current.emit("join_room", { roomId });
-    console.log(`🏠 Joining room: ${roomId}`);
+    // console.log(`🏠 Joining room: ${roomId}`);
   }, [joinedRooms]);
 
   const leaveRoom = useCallback((roomId: string) => {
     if (!socketRef.current?.connected) return;
 
     socketRef.current.emit("leave_room", { roomId });
-    console.log(`🚪 Leaving room: ${roomId}`);
+    // console.log(`🚪 Leaving room: ${roomId}`);
   }, []);
 
   const startTyping = useCallback((roomId: string) => {
@@ -398,16 +387,19 @@ export const useSocket = () => {
 
   // Connection management effects
   useEffect(() => {
-    if (isAuthenticated && connectionState === 'disconnected') {
+    if (isAuthenticated && connectionState === 'disconnected' && !socketRef.current?.connected) {
+      console.log("🔌 Auth state changed, connecting socket...");
       connectSocket();
     } else if (!isAuthenticated && socketRef.current) {
+      console.log("🔌 Auth lost, cleaning up socket...");
       cleanup();
     }
-  }, [isAuthenticated, connectionState, connectSocket, cleanup]);
+  }, [isAuthenticated, connectSocket, cleanup]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      console.log("🔌 Socket hook unmounting...");
       isUnmountingRef.current = true;
       cleanup();
     };

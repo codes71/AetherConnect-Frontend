@@ -36,7 +36,15 @@ export type SmartReplySuggestionsOutput = z.infer<
 export async function getSmartReplySuggestions(
   input: SmartReplySuggestionsInput
 ): Promise<SmartReplySuggestionsOutput> {
-  return smartReplySuggestionsFlow(input);
+  console.log('🧠 Generating smart replies for:', input.latestMessage);
+  try {
+    const result = await smartReplySuggestionsFlow(input);
+    console.log('✅ Smart replies generated:', result.suggestions);
+    return result;
+  } catch (error) {
+    console.error('❌ Smart reply generation failed:', error);
+    throw error;
+  }
 }
 
 const prompt = ai.definePrompt({

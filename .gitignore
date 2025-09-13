@@ -44,3 +44,10 @@ package-lock.json
 # firebase
 firebase-debug.log
 firestore-debug.log
+backend.txt
+backend.md
+
+DEPLOYMENT.md
+Dockerfile
+env.example
+.env

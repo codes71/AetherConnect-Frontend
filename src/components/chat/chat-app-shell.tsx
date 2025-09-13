@@ -67,54 +67,53 @@ export function ChatAppShell({
     <>
       <Sidebar
         className="border-r"
-        collapsible="icon"
+        collapsible={isMobile ? "offcanvas" : "icon"}
         variant={isMobile ? 'floating' : 'sidebar'}
       >
         <SidebarContent>
-          <SidebarHeader className="border-b">
-            <div className="flex w-full items-center justify-between">
+          <SidebarHeader className="border-b p-4">
+            <div className="flex w-full items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Logo />
-                <span className="font-semibold">Aether Connect</span>
+                <span className="font-semibold text-lg">Aether Connect</span>
               </div>
-              <SidebarTrigger className="md:hidden" />
+              {isMobile && <SidebarTrigger />}
             </div>
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search..." className="pl-8" />
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search conversations..." className="pl-10 h-10" />
             </div>
           </SidebarHeader>
 
-          <SidebarMenu className="flex-1 px-2 space-y-1">
+          <SidebarMenu className="flex-1 px-3 py-2 space-y-1">
             {rooms.map((room) => {
               const isActive = selectedRoomId === room.id;
               return (
                 <SidebarMenuItem key={room.id} className="relative" onClick={() => setSelectedRoomId(room.id)}>
                     <SidebarMenuButton
                       isActive={isActive}
-                      className="justify-start h-auto py-3"
+                      className="justify-start h-auto py-4 px-3 rounded-lg"
                       tooltip={{
                         children: room.name,
                         side: 'right',
                         align: 'center',
                       }}
                     >
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={'/placeholder-avatar.png'} alt={room.name} />
-                        <AvatarFallback>
+                      <Avatar className="h-12 w-12 shrink-0">
+                        <AvatarFallback className="text-sm font-medium">
                           {room.name.substring(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="flex flex-1 flex-col items-start text-left w-0">
+                      <div className="flex flex-1 flex-col items-start text-left min-w-0 ml-3">
                         <div className="flex justify-between w-full items-center">
-                          <span className="font-semibold truncate">{room.name}</span>
-                           <span className="text-xs text-muted-foreground">
+                          <span className="font-medium truncate text-sm">{room.name}</span>
+                           <span className="text-xs text-muted-foreground shrink-0">
                             {/* Display last message timestamp here */}
                           </span>
                         </div>
-                        <div className="flex justify-between w-full items-center">
+                        <div className="flex justify-between w-full items-center mt-1">
                           <span className="text-xs text-muted-foreground truncate">
-                            {/* Display last message here */}
+                            {room.members?.length || 0} members
                           </span>
                            {/* Display unread count here */}
                         </div>
