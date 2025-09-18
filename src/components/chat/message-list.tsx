@@ -37,6 +37,16 @@ export function MessageList({
   const getMessageStatusIcon = useCallback((message: Message) => {
     if (message.userId !== currentUserId) return null;
     
+    // If message doesn't have a status field, it's a historical message from server
+    // Historical messages are already delivered, so either show no icon or "delivered" status
+    if (!message.status) {
+      // Option 1: No icon for historical messages (recommended)
+      return null;
+      
+      // Option 2: Show delivered status for historical messages
+      // return <CheckCheck className="h-3 w-3 text-blue-500" />;
+    }
+    
     switch (message.status) {
       case 'sending':
         return <Clock className="h-3 w-3 text-muted-foreground animate-pulse" />;
@@ -47,7 +57,7 @@ export function MessageList({
       case 'failed':
         return <AlertCircle className="h-3 w-3 text-red-500" />;
       default:
-        return <Clock className="h-3 w-3 text-muted-foreground" />;
+        return null; // Changed from Clock icon to null for unknown statuses
     }
   }, [currentUserId]);
 
@@ -217,7 +227,7 @@ export function MessageList({
 
                       {/* Timestamp and status */}
                       <div className={cn(
-                        'flex items-center gap-1 px-1 mt-1 opacity-0 group-hover:opacity-100 transition-all duration-200',
+                        'flex items-center gap-1 px-1 mt-1 transition-all duration-200',
                         isOwn ? 'flex-row-reverse' : 'flex-row'
                       )}>
                         <span className="text-xs text-muted-foreground">
@@ -226,7 +236,12 @@ export function MessageList({
                             minute: '2-digit'
                           })}
                         </span>
-                        {getMessageStatusIcon(message)}
+                        {/* Status icon - only show if it exists */}
+                        {getMessageStatusIcon(message) && (
+                          <div className="flex-shrink-0">
+                            {getMessageStatusIcon(message)}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

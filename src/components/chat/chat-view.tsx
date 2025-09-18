@@ -100,11 +100,10 @@ export function ChatView({ conversationId }: ChatViewProps) {
     lastMessageCountRef.current = messageCount;
   }, [allMessages]);
 
-  // Get last message from others for smart replies
-  const lastOtherMessage = useMemo(() => {
-    const otherMessages = allMessages.filter(msg => msg.userId !== user?.id);
-    return otherMessages[otherMessages.length - 1]?.content;
-  }, [allMessages, user?.id]);
+  // Get last message for smart replies
+  const lastMessageForSmartReplies = useMemo(() => {
+    return allMessages[allMessages.length - 1]?.content;
+  }, [allMessages]);
 
   // Reset auto-scroll after it's been used
   useEffect(() => {
@@ -179,7 +178,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
       <div className="shrink-0">
         <MessageInput
           conversationId={conversationId}
-          lastMessage={lastOtherMessage}
+          lastMessage={lastMessageForSmartReplies}
         />
       </div>
     </div>

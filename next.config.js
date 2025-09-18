@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverExternalPackages: ['genkit']
   },
   images: {
     remotePatterns: [
@@ -13,9 +12,29 @@ const nextConfig = {
       },
     ],
   },
+  webpack: (config, { isServer }) => {
+    // Add a rule to ignore specific warnings from dependencies.
+    config.ignoreWarnings = [
+      ...(config.ignoreWarnings || []),
+      // Ignore the "require.extensions" warning from handlebars
+      {
+        module: /handlebars\/lib\/index\.js$/,
+        message: /require\.extensions is not supported/,
+      },
+      // Ignore the "Critical dependency" warning from require-in-the-middle
+      {
+        module: /require-in-the-middle\/index\.js$/,
+        message: /Critical dependency: require function is used/,
+      },
+    ];
+
+    // Important: return the modified config
+    return config;
+  },
   async rewrites() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     return [
+
       {
         source: '/api/:path*',
         destination: `${apiUrl}/:path*`,
@@ -23,14 +42,13 @@ const nextConfig = {
     ]
   },
   env: {
-    CUSTOM_KEY: process.env.CUSTOM_KEY,
+    CUSTOM_KEY: process.env.CUSTOM_KEY || '',
   },
   // Production optimizations
   compress: true,
   poweredByHeader: false,
   generateEtags: false,
-  allowedDevOrigins: ["192.168.1.6"],
-  
+
   // Security headers
   async headers() {
     return [

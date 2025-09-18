@@ -51,16 +51,16 @@ const prompt = ai.definePrompt({
   name: 'smartReplySuggestionsPrompt',
   input: {schema: SmartReplySuggestionsInputSchema},
   output: {schema: SmartReplySuggestionsOutputSchema},
-  prompt: `You are a helpful assistant that provides smart reply suggestions based on the context of the latest message.
+  prompt: `You are a helpful assistant that provides 3 diverse, concise, and contextually relevant smart reply suggestions based on the latest message and optional conversation history. Aim for replies that are natural, anticipate common follow-up intentions, and offer a mix of questions, affirmations, or suggestions.
 
   Latest message: {{{latestMessage}}}
 
   Conversation history (optional): {{{conversationHistory}}}
 
-  Provide 3 suggested replies that are short and relevant to the conversation. Return the suggestions as a JSON array of strings.
+  Provide 3 distinct suggested replies. Return the suggestions as a JSON array of strings.
   Do not include any intro or explanation in your response, just the array.
   Ensure the output is a valid JSON array.
-  Example: ["Okay", "Sounds good!", "I'll do that"]
+  Example: ["Sounds good!", "What's up?", "I'm on my way!"]
   `,
 });
 

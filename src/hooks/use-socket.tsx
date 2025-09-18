@@ -7,29 +7,27 @@ import { Message } from "@/lib/types";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
+import { logger } from "@/lib/utils";
 import api from "@/lib/api";
 
-
-
-interface SendMessageData {
+type SendMessageData = {
   roomId: string;
   content: string;
   messageType?: string;
-}
+};
 
-type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+type ConnectionState = "disconnected" | "connecting" | "connected";
 
 export const useSocket = () => {
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
-  
-  // Refs for stable references
+
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isUnmountingRef = useRef(false);
-  
-  // State
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+  const failTimersRef = useRef(new Map<string, NodeJS.Timeout>());
+
+  const [connectionState, setConnectionState] =
+    useState<ConnectionState>("disconnected");
   const [realtimeMessages, setRealtimeMessages] = useState<Message[]>([]);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
@@ -39,438 +37,364 @@ export const useSocket = () => {
 
   const maxReconnectAttempts = 5;
 
-  // FIXED: Aligned message handlers with proper type handling
-  const handleNewMessage = useCallback((newMessage: Message) => {    
-    setRealtimeMessages(prev => {
-      // Check for duplicates by server ID
-      if (newMessage.id && prev.some(msg => msg.id === newMessage.id)) {
-        console.log("🔄 Message already exists, skipping:", newMessage.id);
-        return prev;
-      }
+  const connectSocketFnRef = useRef<() => Promise<void>>();
+  const stateRef = useRef({ connectionState, isAuthenticated, isShutdown });
 
-      // Handle optimistic updates - replace by tempId
-      if (newMessage.tempId) {
-        const tempIndex = prev.findIndex(msg => 
-          msg.tempId === newMessage.tempId
-        );
-        
-        if (tempIndex > -1) {
-          console.log("✅ Replacing optimistic message:", newMessage.tempId);
-          const updated = [...prev];
-          // FIXED: Properly merge message data and remove tempId
-          updated[tempIndex] = { 
-            ...newMessage, 
-            status: 'sent',
-            tempId: undefined // Clear tempId after confirmation
-          };
-          return updated;
-        }
-      }
+  useEffect(() => {
+    stateRef.current = { connectionState, isAuthenticated, isShutdown };
+  }, [connectionState, isAuthenticated, isShutdown]);
 
-      // New message from another user
-      console.log("➕ Adding new message:", newMessage.id);
-      return [...prev, { ...newMessage, status: 'sent' }];
-    });
-  }, []);
-
-  const handleMessageConfirmed = useCallback((confirmedMessage: Message) => {    
-    setRealtimeMessages(prev => {
-      const index = prev.findIndex(msg =>
-        msg.id === confirmedMessage.id ||
-        msg.tempId === confirmedMessage.tempId ||
-        msg.tempId === confirmedMessage.id
-      );
-      
-      if (index > -1) {
-        const updated = [...prev];
-        updated[index] = { 
-          ...updated[index],
-          ...confirmedMessage, 
-          status: 'confirmed',
-          tempId: undefined
-        };
-        return updated;
-      }
-      
-      return prev;
-    });
-  }, []);
-
-  const handleMessageError = useCallback((errorData: any) => {
-    console.error("❌ Message error:", errorData);
-    
-    setRealtimeMessages(prev => 
-      prev.map(msg => {
-        // Mark failed messages
-        if ((errorData.tempId && msg.tempId === errorData.tempId) ||
-            (errorData.originalMessageId && msg.id === errorData.originalMessageId)) {
-          console.log("❌ Marking message as failed:", msg.tempId || msg.id);
-          return { ...msg, status: 'failed' as const };
-        }
-        return msg;
-      })
-    );
-    
-    toast({
-      title: "Message failed",
-      description: errorData.message || "Failed to send message",
-      variant: "destructive",
-    });
-  }, [toast]);
-
-  // Socket event handlers
-  const setupSocketListeners = useCallback((socket: Socket) => {
-    socket.on("connect", () => {
-      console.log("✅ Transport connected to Socket.io server");
-      // Don't set as connected yet, wait for authentication
-      setReconnectAttempts(0);
-    });
-
-    socket.on("connected", (data) => {
-      console.log("🎯 Socket.io authentication successful:", data);
-      setConnectionState('connected'); // Now we are fully connected and authenticated
-      // Connection status now shown in header instead of toast
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("❌ Disconnected from Socket.io server:", reason);
-      setConnectionState('disconnected');
-      setJoinedRooms(new Set());
-      
-      if (reason !== "io client disconnect" && !isUnmountingRef.current) {
-        setReconnectAttempts(prev => {
-          const newAttempts = prev + 1;
-          handleReconnection(newAttempts);
-          return newAttempts;
-        });
-      }
-    });
-
-    socket.on("error", (data) => {
-      console.error("💥 Socket.io error:", data);
-      setLastError(data.message || 'Socket error occurred');
-      setConnectionState('disconnected');
-      // Don't trigger reconnection here - disconnect event will handle it
-    });
-
-    socket.on("new_message", handleNewMessage);
-    socket.on("message_confirmed", handleMessageConfirmed);
-    socket.on("message_error", handleMessageError);
-
-    socket.on("joined_room", (data) => {
-      console.log("✅ Successfully joined room:", data.roomId);
-      setJoinedRooms(prev => new Set(prev).add(data.roomId));
-    });
-
-    socket.on("left_room", (data) => {
-      console.log("👋 Successfully left room:", data.roomId);
-      setJoinedRooms(prev => {
-        const updated = new Set(prev);
-        updated.delete(data.roomId);
-        return updated;
-      });
-    });
-
-    socket.on("user_joined", (data) => {
-      console.log("👋 User joined:", data.username);
-      // Removed toast notification for cleaner UX
-    });
-
-    socket.on("user_left", (data) => {
-      console.log("👋 User left:", data.username);
-      // Removed toast notification for cleaner UX
-    });
-
-    socket.on("user_typing", (data) => {
-      if (data.userId !== user?.id) {
-        setTypingUsers(prev => {
-          const newSet = new Set(prev);
-          data.isTyping 
-            ? newSet.add(data.username) 
-            : newSet.delete(data.username);
-          return newSet;
-        });
-      }
-    });
-  }, [user?.id, toast, handleNewMessage, handleMessageConfirmed, handleMessageError]);
-
-  // Cleanup
   const cleanup = useCallback(() => {
-    console.log("🧹 Cleaning up socket connection...");
-    
+    logger.log("🧹 Cleaning up socket...");
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    
+    failTimersRef.current.forEach((t) => clearTimeout(t));
+    failTimersRef.current.clear();
     if (socketRef.current) {
       socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-    
-    setConnectionState('disconnected');
+    setConnectionState("disconnected");
     setJoinedRooms(new Set());
+    setTypingUsers(new Set());
     setReconnectAttempts(0);
+    setLastError(null);
   }, []);
 
-  // Connection management
+  const handleReconnection = useCallback(
+    (currentAttempt: number) => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      const { connectionState: currentState, isShutdown: currentShutdown } =
+        stateRef.current;
+      if (
+        currentAttempt >= maxReconnectAttempts ||
+        currentState === "connecting" ||
+        currentShutdown
+      ) {
+        if (currentAttempt >= maxReconnectAttempts && !currentShutdown) {
+          logger.log("❌ Max reconnection attempts reached");
+          setIsShutdown(true);
+          cleanup();
+          const retryAction = () => {
+            setIsShutdown(false);
+            setReconnectAttempts(0);
+            connectSocketFnRef.current?.();
+          };
+          toast({
+            title: "Connection Failed",
+            description: "Unable to connect. Click to retry.",
+            variant: "destructive",
+            action: (
+              <ToastAction altText="Retry Connection" onClick={retryAction}>
+                Retry
+              </ToastAction>
+            ),
+          });
+        }
+        return;
+      }
+      const delay =
+        Math.min(1000 * Math.pow(2, currentAttempt), 30000) +
+        Math.random() * 1000;
+      logger.log(`🔄 Reconnecting in ${delay}ms (attempt ${currentAttempt})`);
+      reconnectTimeoutRef.current = setTimeout(() => {
+        const {
+          isAuthenticated: latestAuth,
+          connectionState: latestState,
+          isShutdown: latestShutdown,
+        } = stateRef.current;
+        if (
+          latestAuth &&
+          latestState !== "connecting" &&
+          !latestShutdown
+        ) {
+          connectSocketFnRef.current?.();
+        }
+      }, delay);
+    },
+    [cleanup, toast]
+  );
+  
+  const setupSocketListeners = useCallback(
+    (socket: Socket) => {
+      socket.on("connect", () => {
+        logger.log("✅ Transport connected to server");
+        setReconnectAttempts(0);
+      });
+      socket.on("connected", (data) => {
+        logger.log("🎯 Auth success:", data);
+        setConnectionState("connected");
+      });
+      socket.on("disconnect", (reason) => {
+        logger.log("❌ Disconnected:", reason);
+        setConnectionState("disconnected");
+        setJoinedRooms(new Set());
+        setTypingUsers(new Set());
+        if (reason !== "io client disconnect") {
+          setReconnectAttempts((prev) => {
+            const next = prev + 1;
+            handleReconnection(next);
+            return next;
+          });
+        }
+      });
+      socket.on("error", (data) => {
+        logger.error("💥 Socket error:", data);
+        setLastError(data.message || "Socket error occurred");
+        setConnectionState("disconnected");
+      });
+       socket.on("user_typing", (data) => {
+        if (data.userId !== user?.id) {
+          setTypingUsers((prev) => {
+            const n = new Set(prev);
+            data.isTyping ? n.add(data.username) : n.delete(data.username);
+            return n;
+          });
+        }
+      });
+      socket.on("message_confirmed", (data: { tempId: string; id: string; status: "confirmed" }) => {
+        logger.log("✉️ Message confirmed:");
+        setRealtimeMessages((prev) =>
+          prev.map((m) => {
+            if (m.tempId === data.tempId) {
+              // Clear the fail timer if the message is confirmed
+              const timer = failTimersRef.current.get(data.tempId);
+              if (timer) {
+                clearTimeout(timer);
+                failTimersRef.current.delete(data.tempId);
+              }
+              return { ...m, id: data.id, status: data.status };
+            }
+            return m;
+          })
+        );
+      });
+      socket.on("joined_room", (data) => {
+        setJoinedRooms((prev) => new Set(prev).add(data.roomId));
+      });
+      socket.on("left_room", (data) => {
+        setJoinedRooms((prev) => {
+          const n = new Set(prev);
+          n.delete(data.roomId);
+          return n;
+        });
+      });
+    },
+    [user?.id, handleReconnection]
+  );
+
   const connectSocket = useCallback(async () => {
-    console.log("🔌 connectSocket called:", { 
-      connected: socketRef.current?.connected, 
-      isAuthenticated, 
-      unmounting: isUnmountingRef.current, 
-      connectionState, 
-      isShutdown 
-    });
-    
-    if (socketRef.current?.connected || !isAuthenticated || isUnmountingRef.current || connectionState === 'connecting' || isShutdown) {
-      console.log("🔌 Skipping connection - already connected/connecting, not authenticated, or shutdown");
+    if (
+      socketRef.current?.connected ||
+      !stateRef.current.isAuthenticated ||
+      stateRef.current.connectionState === "connecting" ||
+      stateRef.current.isShutdown
+    ) {
       return;
     }
-
-    console.log("🔌 Attempting to connect to Socket.io server...");
-    setConnectionState('connecting');
-
+    setConnectionState("connecting");
+    setLastError(null);
     try {
-      console.log("🎫 Getting WebSocket token...");
+      logger.log("🔌 Attempting to connect socket...");
       const wsTokenResponse = await api.auth.getWsToken();
       if (!wsTokenResponse.data.success || !wsTokenResponse.data.token) {
-        throw new Error(`Failed to get WebSocket token: ${wsTokenResponse.data.message}`);
+        throw new Error("Failed to get WebSocket token");
       }
-      console.log("✅ WebSocket token obtained successfully");
-
-      // Clean up existing connection
-      if (socketRef.current) {
-        socketRef.current.removeAllListeners();
-        socketRef.current.disconnect();
-      }
-
-      const socketOptions = {
+      if (socketRef.current) socketRef.current.disconnect();
+      const socket = io(process.env.NEXT_PUBLIC_WSS_URL!, {
         path: "/socket/",
         transports: ["websocket"],
         timeout: 10000,
         forceNew: true,
         reconnection: false,
         auth: { token: wsTokenResponse.data.token },
-      };
-
-      const wssUrl = process.env.NEXT_PUBLIC_WSS_URL;
-      const socket = io(wssUrl, socketOptions);
-
+      });
       socketRef.current = socket;
       setupSocketListeners(socket);
-
-      // Connection timeout
-      const connectionTimeout = setTimeout(() => {
-        if (socket && !socket.connected) {
-          console.log("⏰ Connection timeout");
-          socket.disconnect();
-          setConnectionState('disconnected');
-          if (!isUnmountingRef.current) {
-            handleReconnection();
-          }
-        }
-      }, 15000);
-
-      socket.on('connect', () => clearTimeout(connectionTimeout));
-
-    } catch (error) {
-      console.error("💥 Failed to connect to socket:", error);
-      setConnectionState('disconnected');
-      setLastError(error instanceof Error ? error.message : 'Connection failed');
-      
-      // Check if it's a 401 error (token expired)
-      if (error instanceof Error && error.message.includes('401')) {
-        console.log("🔄 Token expired, attempting refresh...");
-        // The api client will handle token refresh automatically
-      }
-      
-      if (!isUnmountingRef.current) {
-        handleReconnection();
-      }
-    }
-  }, [isAuthenticated, setupSocketListeners, isShutdown]);
-
-  // Reconnection logic
-  const handleReconnection = useCallback((currentAttempt?: number) => {
-    const attempts = currentAttempt ?? reconnectAttempts;
-    
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    
-    if (attempts >= maxReconnectAttempts || isUnmountingRef.current || connectionState === 'connecting' || isShutdown) {
-      if (attempts >= maxReconnectAttempts && !isShutdown) {
-        console.log("❌ Max reconnection attempts reached, shutting down");
-        setIsShutdown(true);
-        cleanup();
-        
-        const retryAction = () => {
-          setIsShutdown(false);
-          setReconnectAttempts(0);
-          connectSocket();
-        };
-
-        toast({
-          title: "Connection Failed",
-          description: "Unable to connect to chat server. Click to retry.",
-          variant: "destructive",
-          action: <ToastAction altText="Retry Connection" onClick={retryAction}>Retry</ToastAction>
-        });
-      }
-      return;
-    }
-
-    const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
-    console.log(`🔄 Reconnecting in ${delay}ms (attempt ${attempts + 1})`);
-    
-    reconnectTimeoutRef.current = setTimeout(() => {
-      if (isAuthenticated && !isUnmountingRef.current && connectionState !== 'connecting' && !isShutdown) {
-        connectSocket();
-      }
-    }, delay);
-  }, [reconnectAttempts, isAuthenticated, connectionState, connectSocket, toast, isShutdown, cleanup]);
-
-  const sendMessage = useCallback((data: SendMessageData) => {
-    if (!socketRef.current?.connected) {
-      toast({ 
-        title: "Not connected", 
-        description: "Please wait for connection to be established", 
-        variant: "destructive" 
+    } catch (err: any) {
+      logger.error("💥 Failed to connect:", err);
+      setConnectionState("disconnected");
+      setLastError(err instanceof Error ? err.message : "Connection failed");
+      setReconnectAttempts((prev) => {
+        const next = prev + 1;
+        handleReconnection(next);
+        return next;
       });
-      return;
     }
+  }, [setupSocketListeners, handleReconnection]);
 
-    if (!data.content.trim()) {
-      return;
-    }
+  useEffect(() => {
+    connectSocketFnRef.current = connectSocket;
+  }, [connectSocket]);
 
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    const optimisticMessage: Message = {
-      id: tempId,
-      tempId,
-      content: data.content.trim(),
-      createdAt: new Date().toISOString(),
-      userId: user?.id || '',
-      username: user?.username || 'You',
-      roomId: data.roomId,
-      messageType: data.messageType || 'text',
-      status: 'sending',
-    };
+  /* ---------- Public API ---------- */
+  const sendMessage = useCallback(
+    async (data: SendMessageData) => {
+      if (!socketRef.current?.connected) {
+        toast({
+          title: "Not connected",
+          description: "Please wait for connection",
+          variant: "destructive",
+        });
+        return false;
+      }
 
-    console.log("🚀 Sending optimistic message:", tempId);
-    
-    setRealtimeMessages(prev => [...prev, optimisticMessage]);
+      if (!data.content.trim()) return false;
 
-    socketRef.current.emit('send_message', { 
-      ...data, 
-      content: data.content.trim(),
-      tempId 
-    });
+      const tempId = `temp-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 11)}`;
 
-    setTimeout(() => {
-      setRealtimeMessages(prev => 
-        prev.map(msg => 
-          msg.tempId === tempId && msg.status === 'sending'
-            ? { ...msg, status: 'failed' }
-            : msg
-        )
-      );
-    }, 30000);
+      const optimisticMessage: Message = {
+        id: tempId,
+        tempId,
+        content: data.content.trim(),
+        createdAt: new Date().toISOString(),
+        userId: user?.id || "",
+        username: user?.username || "You",
+        roomId: data.roomId,
+        messageType: data.messageType || "text",
+        status: "sending",
+      };
 
-  }, [user, toast]);
+      setRealtimeMessages((prev) => [...prev, optimisticMessage]);
 
-  const joinRoom = useCallback((roomId: string) => {
-    if (!socketRef.current?.connected) {
-      console.log("📝 Cannot join room, not connected:", roomId);
-      return;
-    }
+      const failTimer = setTimeout(() => {
+        setRealtimeMessages((prev) =>
+          prev.map((m) =>
+            m.tempId === tempId && m.status === "sending"
+              ? { ...m, status: "failed" }
+              : m
+          )
+        );
+      }, 30000);
+      failTimersRef.current.set(tempId, failTimer);
 
-    if (joinedRooms.has(roomId)) {
-      console.log("🏠 Room already joined:", roomId);
-      return;
-    }
+      try {
+        await socketRef.current.emitWithAck("send_message", {
+          ...data,
+          content: data.content.trim(),
+          tempId,
+        });
+        // If emitWithAck is successful, update status to 'sent' and clear fail timer
+        setRealtimeMessages((prev) =>
+          prev.map((m) => {
+            if (m.tempId === tempId && m.status === "sending") {
+              const timer = failTimersRef.current.get(tempId);
+              if (timer) {
+                clearTimeout(timer);
+                failTimersRef.current.delete(tempId);
+              }
+              return { ...m, status: "sent" };
+            }
+            return m;
+          })
+        );
+        return true;
+      } catch {
+        // The handleMessageError listener will also likely be triggered by the server
+        setRealtimeMessages((prev) =>
+          prev.map((m) =>
+            m.tempId === tempId ? { ...m, status: "failed" } : m
+          )
+        );
+        toast({
+          title: "Message Failed",
+          description: "Server did not acknowledge the message.",
+          variant: "destructive",
+        });
+        return false;
+      }
+    },
+    [user, toast]
+  );
 
-    socketRef.current.emit("join_room", { roomId });
-  }, [joinedRooms]);
+  const joinRoom = useCallback(
+    (roomId: string) => {
+      if (socketRef.current?.connected && !joinedRooms.has(roomId)) {
+        socketRef.current.emit("join_room", { roomId });
+      }
+    },
+    [joinedRooms]
+  );
 
   const leaveRoom = useCallback((roomId: string) => {
-    if (!socketRef.current?.connected) return;
-    socketRef.current.emit("leave_room", { roomId });
-  }, []);
-
-  const startTyping = useCallback((roomId: string) => {
     if (socketRef.current?.connected) {
-      socketRef.current.emit("typing_start", { roomId });
+      socketRef.current.emit("leave_room", { roomId });
     }
   }, []);
 
-  const stopTyping = useCallback((roomId: string) => {
-    if (socketRef.current?.connected) {
-      socketRef.current.emit("typing_stop", { roomId });
-    }
-  }, []);
+  const startTyping = useCallback(
+    (roomId: string) => {
+      if (socketRef.current?.connected) {
+        socketRef.current.emit("typing_start", { roomId });
+      }
+    },
+    []
+  );
 
+  const stopTyping = useCallback(
+    (roomId: string) => {
+      if (socketRef.current?.connected) {
+        socketRef.current.emit("typing_stop", { roomId });
+      }
+    },
+    []
+  );
+  
   const clearMessages = useCallback(() => {
-    console.log("🧹 Clearing realtime messages");
     setRealtimeMessages([]);
   }, []);
 
-  // Connection management effects - Auto-connect after authentication
+  /* ---------- Effects ---------- */
   useEffect(() => {
-    console.log("🔌 Connection effect triggered:", { 
-      isAuthenticated, 
-      connectionState, 
-      connected: socketRef.current?.connected, 
-      isShutdown 
-    });
-    
-    // Reset unmounting flag when effect runs
-    isUnmountingRef.current = false;
-    
-    if (isAuthenticated && connectionState === 'disconnected' && !socketRef.current?.connected && !isShutdown) {
-      console.log("🔌 Auth state changed, auto-connecting socket...");
-      // Small delay to ensure cookies are set and avoid multiple calls
-      const timer = setTimeout(() => {
-        if (isAuthenticated && connectionState === 'disconnected' && !socketRef.current?.connected && !isUnmountingRef.current) {
-          connectSocket();
+    let isCancelled = false;
+
+    if (isAuthenticated) {
+      logger.log("Auth state is TRUE, scheduling socket connection.");
+      const timerId = setTimeout(() => {
+        if (!isCancelled) {
+          connectSocketFnRef.current?.();
         }
-      }, 500);
-      return () => clearTimeout(timer);
-    } else if (!isAuthenticated && socketRef.current) {
-      console.log("🔌 Auth lost, cleaning up socket...");
+      }, 250);
+
+      return () => {
+        logger.log("Cleaning up scheduled socket connection.");
+        isCancelled = true;
+        clearTimeout(timerId);
+      };
+    } else {
       cleanup();
     }
-  }, [isAuthenticated, isShutdown]);
+  }, [isAuthenticated, cleanup]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      console.log("🔌 Socket hook unmounting...");
-      isUnmountingRef.current = true;
       cleanup();
     };
   }, [cleanup]);
 
-  // Error timeout
   useEffect(() => {
     if (lastError) {
-      const timer = setTimeout(() => setLastError(null), 10000);
-      return () => clearTimeout(timer);
+      const t = setTimeout(() => setLastError(null), 10000);
+      return () => clearTimeout(t);
     }
   }, [lastError]);
 
   return {
-    isConnected: connectionState === 'connected',
+    isConnected: connectionState === "connected",
     connectionState,
     lastError,
     reconnectAttempts,
     joinedRooms: Array.from(joinedRooms),
     realtimeMessages,
-    typingUsers,
+    typingUsers: Array.from(typingUsers),
     connectSocket,
     sendMessage,
     joinRoom,

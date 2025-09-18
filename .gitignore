@@ -38,6 +38,7 @@ yarn-error.log*
 next-env.d.ts
 package-lock.json
 
+
 .genkit/*
 .env*
 
@@ -48,6 +49,9 @@ backend.txt
 backend.md
 
 DEPLOYMENT.md
-Dockerfile
+
 env.example
 .env
+backend.txt
+GEMINI.md
+tracking.md

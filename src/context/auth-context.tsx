@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { User } from '@/lib/types';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +14,6 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   register: (username: string, firstName: string, lastName: string, email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  refreshAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,47 +22,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const pathname = usePathname();
   const { toast } = useToast();
 
   const loadUser = useCallback(async () => {
-    logger.log('Attempting to load user...');
+    logger.log('Attempting to load user session...');
+    logger.log('Current user state before loading:', !!user);
     try {
-      setIsLoading(true);
+      // The Axios interceptor will handle token refreshes automatically.
+      // We just need to wait for the final result.
       const response = await api.auth.getProfile();
       if (response.data.success) {
         setUser(response.data.user);
+        logger.log('User session loaded successfully.');
       } else {
+        // This case might occur if the API call succeeds but business logic fails.
         setUser(null);
       }
     } catch (error: any) {
-      logger.error('Failed to load user:', error.response?.data || error.message || error);
+      // This block will only be reached if the getProfile call fails *after*
+      // the interceptor has already tried and failed to refresh the token.
+      // In this case, the user is truly unauthenticated.
+      logger.info('Failed to load user session:', error.response?.data || error.message || error);
       setUser(null);
-      
-      if (error.response?.status === 401) {
-        return;
-      }
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (options?: { suppressToast?: boolean }) => {
     try {
       await api.auth.logout();
-      toast({
-        title: 'Logged out',
-        description: 'You have been logged out successfully.',
-      });
+      if (!options?.suppressToast) {
+        toast({
+          title: 'Logged out',
+          description: 'You have been logged out successfully.',
+        });
+      }
     } catch (error: any) {
-      logger.error('Logout error:', error);
-      // Even if logout API fails, proceed with client-side cleanup
+      logger.error('Logout API call failed:', error);
+      // Even if the API fails, we must clear the client state.
+    } finally {
+      // The server is responsible for clearing HttpOnly cookies.
+      // We just clear the user state and redirect.
+      setUser(null);
+      router.push('/login');
     }
-    
-    // The server is responsible for clearing HttpOnly cookies.
-    // We just clear the user state and redirect.
-    setUser(null);
-    router.push('/login');
   }, [router, toast]);
 
   useEffect(() => {
@@ -71,25 +74,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadUser]);
 
   useEffect(() => {
+    // This effect handles global auth events dispatched from the API client
+    // when a token refresh fails permanently.
     const handleAuthError = (title: string, description: string) => {
-      // Ensure we call the logout endpoint to have the server clear HttpOnly cookies
-      api.auth.logout().catch(err => logger.error("Logout call during auth error failed:", err));
-      
-      setUser(null);
+      // We call a version of logout that doesn't show a toast,
+      // because we're about to show our own specific one.
+      logout({ suppressToast: true });
       toast({
         title,
         description,
         variant: 'destructive',
       });
-      router.push('/login');
     };
 
     const handleSessionExpired = () => {
-      handleAuthError('Session expired', 'Please log in again.');
+      handleAuthError('Session Expired', 'Please log in again.');
     };
 
     const handleTokenReplay = (event: CustomEvent) => {
-      handleAuthError('Security Alert', event.detail?.message || 'Security violation detected. Please log in again.');
+      handleAuthError('Security Alert', event.detail?.message || 'A security violation was detected. Please log in again.');
     };
 
     window.addEventListener('auth:session-expired', handleSessionExpired);
@@ -99,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('auth:session-expired', handleSessionExpired);
       window.removeEventListener('auth:token-replay-detected', handleTokenReplay as EventListener);
     };
-  }, [toast, router]);
+  }, [toast, logout]);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     logger.log('Login function called with email:', email);
@@ -108,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await api.auth.login({ email, password });
       if (response.data.success) {
         setUser(response.data.user);
-        logger.log('Login successful, user set from response:', response.data.user);
+        logger.log('Login successful, user set:', response.data.user);
         toast({
           title: 'Login successful',
           description: 'Welcome back!',
@@ -126,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.error('Login error:', error.response?.data || error.message || error);
       toast({
         title: 'Login failed',
-        description: error.response?.data?.message || 'Network error occurred',
+        description: error.response?.data?.message || 'A network error occurred.',
         variant: 'destructive',
       });
       return false;
@@ -149,7 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         toast({
           title: 'Registration failed',
-          description: response.data.message || 'Please check your details',
+          description: response.data.message || 'Please check your details.',
           variant: 'destructive',
         });
         return false;
@@ -158,7 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.error('Registration error:', error.response?.data || error.message || error);
       toast({
         title: 'Registration failed',
-        description: error.response?.data?.message || 'A network error occurred',
+        description: error.response?.data?.message || 'A network error occurred.',
         variant: 'destructive',
       });
       return false;
@@ -167,43 +170,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [toast]);
 
-  const refreshAuth = useCallback(async () => {
-    logger.log('--- Refreshing tokens ---');  
-    try {
-      const response = await api.auth.refreshToken();
-      
-      if (response.data.success) {
-        logger.log('--- Token Refresh (Rotation) Successful ---');
-        logger.log('Auth refreshed successfully');
-      } else {
-        throw new Error('Token refresh failed');
-      }
-    } catch (error: any) {
-      logger.error('Failed to refresh auth:', error);
-      
-      const errorMessage = error.response?.data?.message || error.message;
-      
-      if (errorMessage?.includes('already used') || errorMessage?.includes('invalid')) {
-        toast({
-          title: 'Security Alert',
-          description: 'Token reuse detected. Please log in again for security.',
-          variant: 'destructive',
-        });
-      } else {
-        toast({
-          title: 'Session expired',
-          description: 'Please log in again.',
-          variant: 'destructive',
-        });
-      }
-      
-      setUser(null);
-      router.push('/login');
-    }
-  }, [router, toast]);
+  // The `refreshAuth` function is an internal concern of the api client,
+  // so it's removed from the context's public value.
+  const value = {
+    user,
+    login,
+    register,
+    logout,
+    isAuthenticated: !!user,
+    isLoading
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user, isLoading, refreshAuth }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

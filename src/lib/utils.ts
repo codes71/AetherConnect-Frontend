@@ -7,25 +7,12 @@ export function cn(...inputs: ClassValue[]) {
 
 const isDevelopment = process.env.NODE_ENV === 'development';
 console.log(`Logger initialized in ${isDevelopment ? 'development' : 'production'} mode.`);
+
+const noOp = () => {};
+
 export const logger = {
-  log: (...args: any[]) => {
-    if (isDevelopment) {
-      console.log(...args);
-    }
-  },
-  warn: (...args: any[]) => {
-    if (isDevelopment) {
-      console.warn(...args);
-    }
-  },
-  error: (...args: any[]) => {
-    if (isDevelopment) {
-      console.error(...args);
-    }
-  },
-  info: (...args: any[]) => {
-    if (isDevelopment) {
-      console.info(...args);
-    }
-  },
+  log: isDevelopment ? console.log.bind(console) : noOp,
+  warn: isDevelopment ? console.warn.bind(console) : noOp,
+  error: isDevelopment ? console.error.bind(console) : noOp,
+  info: isDevelopment ? console.info.bind(console) : noOp,
 };

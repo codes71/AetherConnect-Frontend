@@ -7,6 +7,7 @@ import { Send, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSocketContext } from '@/context/socket-context';
 import { useAuth } from '@/context/auth-context';
+import { useMessageHistory } from '@/hooks/use-message-history';
 
 interface MessageInputProps {
   conversationId: string;
@@ -16,6 +17,7 @@ interface MessageInputProps {
 export function MessageInput({ conversationId, lastMessage }: MessageInputProps) {
   const { actions } = useSocketContext();
   const { user } = useAuth();
+  const { historyMessages } = useMessageHistory(conversationId);
   const [content, setContent] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -25,23 +27,31 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
   const isTypingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Format conversation history for the AI prompt
+  const formattedConversationHistory = historyMessages
+    .map(msg => `${msg.username}: ${msg.content}`)
+    .join('\n');
+
   // Load smart replies when last message changes
   useEffect(() => {
     if (lastMessage && !content.trim()) {
-      loadSmartReplies(lastMessage);
+      loadSmartReplies(lastMessage, formattedConversationHistory);
     } else {
       setSmartReplies([]);
     }
-  }, [lastMessage, content]);
+  }, [lastMessage, content, formattedConversationHistory]);
 
-  const loadSmartReplies = async (message: string) => {
+  const loadSmartReplies = async (message: string, conversationHistory: string) => {
     setIsLoadingReplies(true);
+    console.log('Frontend sending latestMessage:', message);
+    console.log('Frontend sending conversationHistory:', conversationHistory);
     try {
-      const response = await fetch('/smart-replies', {
+      const response = await fetch('/api/smart-replies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           latestMessage: message,
+          conversationHistory: conversationHistory,
         }),
       });
 
