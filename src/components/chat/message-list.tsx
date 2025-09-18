@@ -3,7 +3,7 @@
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { Message } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Loader2, Check, CheckCheck, Clock, AlertCircle } from 'lucide-react';
 

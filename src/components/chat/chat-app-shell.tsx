@@ -1,7 +1,4 @@
-'use client';
-
 import { ReactNode } from 'react'
-import { usePathname } from 'next/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -33,7 +30,6 @@ import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/logo';
 import {
   Search,
-  Settings,
   LogOut,
   ChevronDown,
 } from 'lucide-react';

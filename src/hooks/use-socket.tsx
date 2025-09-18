@@ -150,7 +150,6 @@ export const useSocket = () => {
         setConnectionState("disconnected");
       });
       socket.on("new_message", (message: Message) => {
-        logger.log("📩 New message received (optimistic):", message);
         setRealtimeMessages((prev) => [...prev, { ...message, status: "sending" }]);
       });
        socket.on("user_typing", (data) => {
@@ -234,10 +233,18 @@ export const useSocket = () => {
       });
       socketRef.current = socket;
       setupSocketListeners(socket);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      let errorMessage = "Connection failed";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+        errorMessage = (err as { message: string }).message;
+      }
       logger.error("💥 Failed to connect:", err);
       setConnectionState("disconnected");
-      setLastError(err instanceof Error ? err.message : "Connection failed");
+      setLastError(errorMessage);
       setReconnectAttempts((prev) => {
         const next = prev + 1;
         handleReconnection(next);

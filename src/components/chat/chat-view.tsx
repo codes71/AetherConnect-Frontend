@@ -4,12 +4,12 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useSocketContext } from '@/context/socket-context';
 import { MessageInput } from '@/components/chat/message-input';
 import { MessageList } from '@/components/chat/message-list';
+import { Message } from '@/lib/types';
 import { useAuth } from '@/context/auth-context';
 import { Room } from '@/lib/types';
 import { ChatHeader } from './chat-header';
 import { useMessageHistory } from '@/hooks/use-message-history';
 import { useRooms } from '@/context/room-context';
-import { cn } from '@/lib/utils';
 
 interface ChatViewProps {
   conversationId: string;
@@ -82,9 +82,6 @@ export function ChatView({ conversationId }: ChatViewProps) {
         messageMap.set(msg.id, msg);
       } else if (msg.tempId) {
         messageMap.set(msg.tempId, msg);
-      } else {
-        // Fallback for messages without id or tempId, though all should have one
-        messageMap.set(msg.createdAt + msg.content, msg);
       }
     });
 
@@ -94,9 +91,6 @@ export function ChatView({ conversationId }: ChatViewProps) {
         messageMap.set(msg.id, msg); // Overwrite if historical message with same ID exists
       } else if (msg.tempId) {
         messageMap.set(msg.tempId, msg); // Use tempId if no real ID yet
-      } else {
-        // Fallback for messages without id or tempId
-        messageMap.set(msg.createdAt + msg.content, msg);
       }
     });
     
@@ -126,25 +120,6 @@ export function ChatView({ conversationId }: ChatViewProps) {
       return () => clearTimeout(timer);
     }
   }, [shouldAutoScroll]);
-
-  const handleSendMessage = useCallback((content: string) => {
-    if (conversationId && content.trim()) {
-      sendMessage({ roomId: conversationId, content: content.trim() });
-      setShouldAutoScroll(true); // Auto-scroll when sending message
-    }
-  }, [conversationId, sendMessage]);
-
-  const handleTypingStart = useCallback(() => {
-    if (conversationId) {
-      startTyping(conversationId);
-    }
-  }, [conversationId, startTyping]);
-
-  const handleTypingStop = useCallback(() => {
-    if (conversationId) {
-      stopTyping(conversationId);
-    }
-  }, [conversationId, stopTyping]);
 
   if (!user) {
     return (

@@ -163,6 +163,7 @@ export function MessageInput({
                 size="sm"
                 onClick={() => handleSmartReply(reply)}
                 className="text-sm py-1 px-3 rounded-full hover:bg-primary hover:text-primary-foreground transition-colors"
+                disabled={isLoadingReplies}
               >
                 {reply}
               </Button>

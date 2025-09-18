@@ -29,7 +29,6 @@ export function ThemeProvider({
   children,
   defaultTheme = 'system',
   storageKey = 'ui-theme',
-  attribute = 'class',
   enableSystem = true,
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(defaultTheme);

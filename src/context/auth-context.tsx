@@ -1,16 +1,18 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/lib/types';
 import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/utils';
+import { AxiosError } from 'axios';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+
   login: (email: string, password: string) => Promise<boolean>;
   register: (username: string, firstName: string, lastName: string, email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -23,10 +25,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
+  const userRef = useRef(user);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const loadUser = useCallback(async () => {
     logger.log('Attempting to load user session...');
-    logger.log('Current user state before loading:', !!user);
+    logger.log('Current user state before loading:', !!userRef.current);
     try {
       // The Axios interceptor will handle token refreshes automatically.
       // We just need to wait for the final result.
@@ -38,11 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // This case might occur if the API call succeeds but business logic fails.
         setUser(null);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       // This block will only be reached if the getProfile call fails *after*
       // the interceptor has already tried and failed to refresh the token.
       // In this case, the user is truly unauthenticated.
-      logger.info('Failed to load user session:', error.response?.data || error.message || error);
+      const axiosError = error as AxiosError;
+      logger.info('Failed to load user session:', axiosError.response?.data || axiosError.message || axiosError);
       setUser(null);
     } finally {
       setIsLoading(false);
@@ -58,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           description: 'You have been logged out successfully.',
         });
       }
-    } catch (error: any) {
+    } catch (error: AxiosError) {
       logger.error('Logout API call failed:', error);
       // Even if the API fails, we must clear the client state.
     } finally {
@@ -125,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         return false;
       }
-    } catch (error: any) {
+    } catch (error: AxiosError) {
       logger.error('Login error:', error.response?.data || error.message || error);
       toast({
         title: 'Login failed',
@@ -157,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         return false;
       }
-    } catch (error: any) {
+    } catch (error: AxiosError) {
       logger.error('Registration error:', error.response?.data || error.message || error);
       toast({
         title: 'Registration failed',

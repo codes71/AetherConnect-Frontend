@@ -23,7 +23,7 @@ export type Message = {
   messageType?: string;
   status?: 'sending' | 'sent' | 'confirmed' | 'failed'; // ← FIXED: Align with socket usage
   user?: User;
-  metadata?: any; // ← ADDED: For future extensibility
+  metadata?: Record<string, unknown>; // ← ADDED: For future extensibility
 };
 
 export type Room = {

@@ -47,7 +47,7 @@ export default function LoginPage() {
       } else {
         setError('Invalid email or password. Please try again.'); // AuthContext's login already shows toast
       }
-    } catch (err) {
+    } catch (error) {
       // This catch block might not be reached if AuthContext's login handles errors internally
       setError('An unexpected error occurred. Please try again.');
     }

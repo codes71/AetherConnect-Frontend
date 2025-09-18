@@ -1,19 +1,20 @@
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosInstance, AxiosResponse, AxiosError } from "axios";
 import { logger } from "@/lib/utils";
+import { User, Message, Room } from "@/lib/types";
 
 // Define interfaces for API methods
 interface AuthApi {
-  login: (data: any) => Promise<any>;
-  register: (data: any) => Promise<any>;
-  getProfile: () => Promise<any>;
-  logout: () => Promise<any>;
-  refreshToken: () => Promise<any>;
-  getWsToken: () => Promise<any>;
+  login: (data: Record<string, unknown>) => Promise<AxiosResponse<User>>;
+  register: (data: Record<string, unknown>) => Promise<AxiosResponse<User>>;
+  getProfile: () => Promise<AxiosResponse<User>>;
+  logout: () => Promise<AxiosResponse<{ message: string }>>;
+  refreshToken: () => Promise<AxiosResponse<{ success: boolean }>>;
+  getWsToken: () => Promise<AxiosResponse<{ token: string }>>;
 }
 
 interface MessageApi {  
-  getRooms: () => Promise<any>;
-  getMessages: (roomId: string, page: number, limit: number) => Promise<any>;
+  getRooms: () => Promise<AxiosResponse<Room[]>>;
+  getMessages: (roomId: string, page: number, limit: number) => Promise<AxiosResponse<Message[]>>;
 }
 
 class ApiClient {
@@ -22,7 +23,7 @@ class ApiClient {
   public message!: MessageApi;
 
   private isRefreshing = false;
-  private failedQueue: Array<{ resolve: (value: unknown) => void; reject: (reason?: any) => void; request: () => Promise<any> }> = [];
+  private failedQueue: Array<{ resolve: (value: unknown) => void; reject: (reason?: AxiosError) => void; request: () => Promise<AxiosResponse<unknown>> }> = [];
 
   constructor() {
     const baseURL = process.env.NODE_ENV === 'production'
@@ -38,7 +39,7 @@ class ApiClient {
     this.setupInterceptors();
   }
 
-  private processQueue(error: any | null) {
+  private processQueue(error: AxiosError | null) {
     this.failedQueue.forEach(prom => {
       if (error) {
         prom.reject(error);
@@ -53,17 +54,17 @@ class ApiClient {
   private setupInterceptors() {
     this.axiosInstance.interceptors.response.use(
       (response) => response,
-      async (error) => {
+      async (error: AxiosError) => {
         const originalRequest = error.config;
 
         // If unauthorized and not a refresh request itself
-        if (error.response?.status === 401 && originalRequest.url !== '/auth/refresh' && originalRequest.url !== '/auth/logout') {
+        if (error.response?.status === 401 && originalRequest?.url !== '/auth/refresh' && originalRequest?.url !== '/auth/logout') {
           if (this.isRefreshing) {
             return new Promise((resolve, reject) => {
               this.failedQueue.push({
                 resolve,
                 reject,
-                request: () => this.axiosInstance(originalRequest),
+                request: () => this.axiosInstance(originalRequest!),
               });
             });
           }
@@ -76,11 +77,11 @@ class ApiClient {
             if (response.data.success) {
               logger.log('--- Token Refresh (Rotation) Successful ---');
               this.processQueue(null);
-              return this.axiosInstance(originalRequest); // Retry original request
+              return this.axiosInstance(originalRequest!); // Retry original request
             }
             // This path may not be hit if server always returns error status for failure
             throw new Error('Token refresh failed');
-          } catch (refreshError: any) {
+          } catch (refreshError: AxiosError) {
             this.processQueue(refreshError);
             
             const errorMessage = refreshError.response?.data?.message || refreshError.message;
@@ -109,8 +110,8 @@ class ApiClient {
 
   private initializeApiMethods() {
     this.auth = {
-      login: (data: any) => this.axiosInstance.post("/auth/login", data),
-      register: (data: any) => this.axiosInstance.post("/auth/register", data),
+      login: (data: Record<string, unknown>) => this.axiosInstance.post("/auth/login", data),
+      register: (data: Record<string, unknown>) => this.axiosInstance.post("/auth/register", data),
       getProfile: () => this.axiosInstance.get("/auth/profile"),
       logout: () => this.axiosInstance.post("/auth/logout"),
       getWsToken: () => this.axiosInstance.get("/auth/ws-token"),
