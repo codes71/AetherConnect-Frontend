@@ -1,5 +1,4 @@
 import axios, { AxiosInstance } from "axios";
-import type { User } from "./types"; // Assuming User type is still needed
 import { logger } from "@/lib/utils";
 
 // Define interfaces for API methods

@@ -1,24 +1,27 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useSocketContext } from '@/context/socket-context';
-import { useAuth } from '@/context/auth-context';
-import { useMessageHistory } from '@/hooks/use-message-history';
+import { useState, useRef, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Send, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useSocketContext } from "@/context/socket-context";
+import { useAuth } from "@/context/auth-context";
+import { useMessageHistory } from "@/hooks/use-message-history";
 
 interface MessageInputProps {
   conversationId: string;
   lastMessage?: string;
 }
 
-export function MessageInput({ conversationId, lastMessage }: MessageInputProps) {
+export function MessageInput({
+  conversationId,
+  lastMessage,
+}: MessageInputProps) {
   const { actions } = useSocketContext();
   const { user } = useAuth();
   const { historyMessages } = useMessageHistory(conversationId);
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [smartReplies, setSmartReplies] = useState<string[]>([]);
@@ -29,8 +32,8 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
 
   // Format conversation history for the AI prompt
   const formattedConversationHistory = historyMessages
-    .map(msg => `${msg.username}: ${msg.content}`)
-    .join('\n');
+    .map((msg) => `${msg.username}: ${msg.content}`)
+    .join("\n");
 
   // Load smart replies when last message changes
   useEffect(() => {
@@ -41,14 +44,15 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
     }
   }, [lastMessage, content, formattedConversationHistory]);
 
-  const loadSmartReplies = async (message: string, conversationHistory: string) => {
+  const loadSmartReplies = async (
+    message: string,
+    conversationHistory: string
+  ) => {
     setIsLoadingReplies(true);
-    console.log('Frontend sending latestMessage:', message);
-    console.log('Frontend sending conversationHistory:', conversationHistory);
     try {
-      const response = await fetch('/api/smart-replies', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/smart-replies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           latestMessage: message,
           conversationHistory: conversationHistory,
@@ -60,7 +64,7 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
         setSmartReplies(data.suggestions || []);
       }
     } catch (error) {
-      console.error('Failed to load smart replies:', error);
+      console.error("Failed to load smart replies:", error);
     } finally {
       setIsLoadingReplies(false);
     }
@@ -90,22 +94,22 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!content.trim() || isSending) return;
 
     const originalContent = content;
-    setContent(''); // Clear immediately for better UX
+    setContent(""); // Clear immediately for better UX
     setSmartReplies([]); // Clear smart replies
-    
+
     try {
       setIsSending(true);
-      
+
       // Stop typing indicator
       if (isTypingRef.current) {
         actions.stopTyping(conversationId);
         isTypingRef.current = false;
       }
-      
+
       // Clear typing timeout
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -115,11 +119,10 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
       actions.sendMessage({
         roomId: conversationId,
         content: originalContent.trim(),
-        messageType: 'text'
+        messageType: "text",
       });
-
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error("Failed to send message:", error);
       // Restore content on error
       setContent(originalContent);
     } finally {
@@ -128,7 +131,7 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
     }
@@ -143,10 +146,12 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
   const showSmartReplies = smartReplies.length > 0 && !hasContent;
 
   return (
-    <div className={cn(
-      "border rounded-lg bg-background transition-colors",
-      isFocused && "border-primary/20 shadow-sm"
-    )}>
+    <div
+      className={cn(
+        "border rounded-lg bg-background transition-colors",
+        isFocused && "border-primary/20 shadow-sm"
+      )}
+    >
       {/* Smart Reply Suggestions - Expand container */}
       {showSmartReplies && (
         <div className="px-4 pt-3 pb-2 border-b">
@@ -175,7 +180,7 @@ export function MessageInput({ conversationId, lastMessage }: MessageInputProps)
             onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder={`Message as ${user?.username || 'User'}...`}
+            placeholder={`Message as ${user?.username || "User"}...`}
             className="min-h-[44px] max-h-32 resize-none border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             rows={1}
           />

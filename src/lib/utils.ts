@@ -5,8 +5,17 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+console.log(`Logger initialized in ${process.env.NODE_ENV} mode.`);
+
 const isDevelopment = process.env.NODE_ENV === 'development';
-console.log(`Logger initialized in ${isDevelopment ? 'development' : 'production'} mode.`);
+if (!isDevelopment) {
+  console.log = () => {};
+  console.warn = () => {};
+  console.error = () => {};
+  console.info = () => {};
+}
+
+
 
 const noOp = () => {};
 
