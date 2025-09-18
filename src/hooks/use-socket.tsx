@@ -149,6 +149,10 @@ export const useSocket = () => {
         setLastError(data.message || "Socket error occurred");
         setConnectionState("disconnected");
       });
+      socket.on("new_message", (message: Message) => {
+        logger.log("📩 New message received (optimistic):", message);
+        setRealtimeMessages((prev) => [...prev, { ...message, status: "sending" }]);
+      });
        socket.on("user_typing", (data) => {
         if (data.userId !== user?.id) {
           setTypingUsers((prev) => {
@@ -174,6 +178,19 @@ export const useSocket = () => {
             return m;
           })
         );
+      });
+      socket.on("message_error", (data: { tempId: string; error: string }) => {
+        logger.error("❌ Message error:", data);
+        setRealtimeMessages((prev) =>
+          prev.map((m) =>
+            m.tempId === data.tempId ? { ...m, status: "failed" } : m
+          )
+        );
+        toast({
+          title: "Message Failed",
+          description: data.error || "An unknown error occurred.",
+          variant: "destructive",
+        });
       });
       socket.on("joined_room", (data) => {
         setJoinedRooms((prev) => new Set(prev).add(data.roomId));

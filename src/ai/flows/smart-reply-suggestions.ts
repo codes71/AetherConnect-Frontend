@@ -39,7 +39,7 @@ export async function getSmartReplySuggestions(
   console.log('🧠 Generating smart replies for:', input.latestMessage);
   try {
     const result = await smartReplySuggestionsFlow(input);
-    console.log('✅ Smart replies generated:', result.suggestions);
+    // console.log('✅ Smart replies generated:', result.suggestions);
     return result;
   } catch (error) {
     console.error('❌ Smart reply generation failed:', error);

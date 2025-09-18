@@ -74,19 +74,33 @@ export function ChatView({ conversationId }: ChatViewProps) {
     const roomHistoryMessages = historyMessages.filter(msg => msg.roomId === conversationId);
     const roomRealtimeMessages = realtimeMessages.filter(msg => msg.roomId === conversationId);
     
-    const combined = [...roomHistoryMessages, ...roomRealtimeMessages];
-    
-    // Remove duplicates by id and tempId
-    const uniqueMessages = combined.filter((message, index, arr) => {
-      // Keep if it's the first occurrence of this id
-      const firstIndex = arr.findIndex(m => 
-        (m.id && message.id && m.id === message.id) ||
-        (m.tempId && message.tempId && m.tempId === message.tempId)
-      );
-      return firstIndex === index;
+    const messageMap = new Map<string, Message>();
+
+    // Add historical messages first
+    roomHistoryMessages.forEach(msg => {
+      if (msg.id) {
+        messageMap.set(msg.id, msg);
+      } else if (msg.tempId) {
+        messageMap.set(msg.tempId, msg);
+      } else {
+        // Fallback for messages without id or tempId, though all should have one
+        messageMap.set(msg.createdAt + msg.content, msg);
+      }
+    });
+
+    // Add real-time messages, overwriting historical if IDs match
+    roomRealtimeMessages.forEach(msg => {
+      if (msg.id) {
+        messageMap.set(msg.id, msg); // Overwrite if historical message with same ID exists
+      } else if (msg.tempId) {
+        messageMap.set(msg.tempId, msg); // Use tempId if no real ID yet
+      } else {
+        // Fallback for messages without id or tempId
+        messageMap.set(msg.createdAt + msg.content, msg);
+      }
     });
     
-    return uniqueMessages.sort((a, b) => 
+    return Array.from(messageMap.values()).sort((a, b) => 
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }, [historyMessages, realtimeMessages, conversationId]);
