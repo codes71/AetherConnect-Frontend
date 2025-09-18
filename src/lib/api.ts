@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import type { User } from "./types"; // Assuming User type is still needed
+import { logger } from "@/lib/utils";
 
 // Define interfaces for API methods
 interface AuthApi {
@@ -19,77 +20,86 @@ interface MessageApi {
 class ApiClient {
   private axiosInstance: AxiosInstance;
   public auth!: AuthApi;
-  public message!: MessageApi; // Added
+  public message!: MessageApi;
+
+  private isRefreshing = false;
+  private failedQueue: Array<{ resolve: (value: unknown) => void; reject: (reason?: any) => void; request: () => Promise<any> }> = [];
 
   constructor() {
+    const baseURL = process.env.NODE_ENV === 'production'
+      ? process.env.NEXT_PUBLIC_API_URL
+      : '/api';
+
     this.axiosInstance = axios.create({
-      baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api",
+      baseURL,
       withCredentials: true, // ensures cookies (HttpOnly) are sent
     });
 
-    this.setupInterceptors();
     this.initializeApiMethods();
+    this.setupInterceptors();
+  }
+
+  private processQueue(error: any | null) {
+    this.failedQueue.forEach(prom => {
+      if (error) {
+        prom.reject(error);
+      } else {
+        // Retry the original request
+        prom.resolve(prom.request());
+      }
+    });
+    this.failedQueue = [];
   }
 
   private setupInterceptors() {
-    let isRefreshing = false;
-    let failedQueue: Array<{ resolve: (value?: any) => void; reject: (reason?: any) => void; }> = [];
-
-    const processQueue = (error: any | null) => {
-      failedQueue.forEach(prom => {
-        if (error) {
-          prom.reject(error);
-        } else {
-          prom.resolve();
-        }
-      });
-      failedQueue = [];
-    };
-
-
     this.axiosInstance.interceptors.response.use(
       (response) => response,
       async (error) => {
         const originalRequest = error.config;
 
         // If unauthorized and not a refresh request itself
-        if (error.response?.status === 401 && originalRequest.url !== '/auth/refresh') {
-          if (isRefreshing) {
+        if (error.response?.status === 401 && originalRequest.url !== '/auth/refresh' && originalRequest.url !== '/auth/logout') {
+          if (this.isRefreshing) {
             return new Promise((resolve, reject) => {
-              failedQueue.push({ resolve, reject });
-            }).then(() => this.axiosInstance(originalRequest)).catch(err => Promise.reject(err));
+              this.failedQueue.push({
+                resolve,
+                reject,
+                request: () => this.axiosInstance(originalRequest),
+              });
+            });
           }
 
-          isRefreshing = true;
+          this.isRefreshing = true;
 
           try {
-            const refreshResponse = await this.axiosInstance.post(
-              "/auth/refresh",
-              {},
-              { withCredentials: true }
-            );
-
-            if (refreshResponse.data.success) {
-              isRefreshing = false;
-              processQueue(null);
-              return this.axiosInstance(originalRequest);
-            } else {
-              // Refresh failed, clear queue and redirect
-              isRefreshing = false;
-              processQueue(new Error('Refresh token failed'));
-              if (typeof window !== "undefined") {
-                window.location.href = "/login";
-              }
-              return Promise.reject(error); // Reject the original request
+            logger.log('--- Refreshing tokens ---');
+            const response = await this.auth.refreshToken();
+            if (response.data.success) {
+              logger.log('--- Token Refresh (Rotation) Successful ---');
+              this.processQueue(null);
+              return this.axiosInstance(originalRequest); // Retry original request
             }
-          } catch (refreshError) {
-            console.error("Token refresh failed:", refreshError);
-            isRefreshing = false;
-            processQueue(refreshError); // Reject all queued requests
+            // This path may not be hit if server always returns error status for failure
+            throw new Error('Token refresh failed');
+          } catch (refreshError: any) {
+            this.processQueue(refreshError);
+            
+            const errorMessage = refreshError.response?.data?.message || refreshError.message;
             if (typeof window !== "undefined") {
-              window.location.href = "/login";
+              let eventType = 'auth:session-expired';
+              let eventDetail = { message: 'Session expired. Please log in again.' };
+              
+              if (errorMessage?.includes('already used') || errorMessage?.includes('invalid')) {
+                eventType = 'auth:token-replay-detected';
+                eventDetail = { message: 'Security violation detected. Please log in again.' };
+              }
+              
+              const event = new CustomEvent(eventType, { detail: eventDetail });
+              window.dispatchEvent(event);
             }
-            return Promise.reject(refreshError); // Reject the original request
+            return Promise.reject(refreshError);
+          } finally {
+            this.isRefreshing = false;
           }
         }
 
@@ -104,13 +114,13 @@ class ApiClient {
       register: (data: any) => this.axiosInstance.post("/auth/register", data),
       getProfile: () => this.axiosInstance.get("/auth/profile"),
       logout: () => this.axiosInstance.post("/auth/logout"),
-      refreshToken: () => this.axiosInstance.post("/auth/refresh"),
       getWsToken: () => this.axiosInstance.get("/auth/ws-token"),
+      refreshToken: () => this.axiosInstance.post("/auth/refresh", {}, { withCredentials: true }),
     };
 
     this.message = {
       getRooms: () => this.axiosInstance.get('/rooms'),
-            getMessages: (roomId: string, page: number = 1, limit: number = 50) => this.axiosInstance.get(`/rooms/${roomId}/messages`, { params: { page, limit } }),
+      getMessages: (roomId: string, page: number = 1, limit: number = 50) => this.axiosInstance.get(`/rooms/${roomId}/messages`, { params: { page, limit } }),
     };
   }
 }

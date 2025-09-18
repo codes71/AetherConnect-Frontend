@@ -21,7 +21,7 @@ interface SocketContextType {
     lastError: SocketHookType['lastError'];
     reconnectAttempts: SocketHookType['reconnectAttempts'];
     joinedRooms: SocketHookType['joinedRooms'];
-    joiningRooms: SocketHookType['joiningRooms'];
+    
     realtimeMessages: SocketHookType['realtimeMessages'];
     typingUsers: SocketHookType['typingUsers'];
   };
@@ -36,7 +36,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     lastError,
     reconnectAttempts,
     joinedRooms,
-    joiningRooms,
+
     realtimeMessages,
     typingUsers,
     connectSocket,
@@ -64,10 +64,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     lastError,
     reconnectAttempts,
     joinedRooms,
-    joiningRooms,
+
     realtimeMessages,
     typingUsers,
-  }), [isConnected, connectionState, lastError, reconnectAttempts, joinedRooms, joiningRooms, realtimeMessages, typingUsers]);
+  }), [isConnected, connectionState, lastError, reconnectAttempts, joinedRooms, realtimeMessages, typingUsers]);
 
   const contextValue = useMemo(() => ({ actions, data }), [actions, data]);
 

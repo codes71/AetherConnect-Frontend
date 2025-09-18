@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import * as React from "react";
 import { io, Socket } from "socket.io-client";
 import { Message } from "@/lib/types";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import api from "@/lib/api";
 
-const SOCKET_URL = process.env.NODE_ENV === "production" 
-  ? "wss://your-domain.com" 
-  : "http://localhost:3002";
+
 
 interface SendMessageData {
   roomId: string;
@@ -35,6 +35,7 @@ export const useSocket = () => {
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const [joinedRooms, setJoinedRooms] = useState<Set<string>>(new Set());
+  const [isShutdown, setIsShutdown] = useState(false);
 
   const maxReconnectAttempts = 5;
 
@@ -120,13 +121,14 @@ export const useSocket = () => {
   // Socket event handlers
   const setupSocketListeners = useCallback((socket: Socket) => {
     socket.on("connect", () => {
-      console.log("✅ Connected to Socket.io server");
-      setConnectionState('connected');
+      console.log("✅ Transport connected to Socket.io server");
+      // Don't set as connected yet, wait for authentication
       setReconnectAttempts(0);
     });
 
     socket.on("connected", (data) => {
       console.log("🎯 Socket.io authentication successful:", data);
+      setConnectionState('connected'); // Now we are fully connected and authenticated
       // Connection status now shown in header instead of toast
     });
 
@@ -136,7 +138,11 @@ export const useSocket = () => {
       setJoinedRooms(new Set());
       
       if (reason !== "io client disconnect" && !isUnmountingRef.current) {
-        handleReconnection();
+        setReconnectAttempts(prev => {
+          const newAttempts = prev + 1;
+          handleReconnection(newAttempts);
+          return newAttempts;
+        });
       }
     });
 
@@ -144,6 +150,7 @@ export const useSocket = () => {
       console.error("💥 Socket.io error:", data);
       setLastError(data.message || 'Socket error occurred');
       setConnectionState('disconnected');
+      // Don't trigger reconnection here - disconnect event will handle it
     });
 
     socket.on("new_message", handleNewMessage);
@@ -187,10 +194,38 @@ export const useSocket = () => {
     });
   }, [user?.id, toast, handleNewMessage, handleMessageConfirmed, handleMessageError]);
 
+  // Cleanup
+  const cleanup = useCallback(() => {
+    console.log("🧹 Cleaning up socket connection...");
+    
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    
+    setConnectionState('disconnected');
+    setJoinedRooms(new Set());
+    setReconnectAttempts(0);
+  }, []);
+
   // Connection management
   const connectSocket = useCallback(async () => {
-    if (socketRef.current?.connected || !isAuthenticated || isUnmountingRef.current || connectionState === 'connecting') {
-      console.log("🔌 Skipping connection - already connected/connecting or not authenticated");
+    console.log("🔌 connectSocket called:", { 
+      connected: socketRef.current?.connected, 
+      isAuthenticated, 
+      unmounting: isUnmountingRef.current, 
+      connectionState, 
+      isShutdown 
+    });
+    
+    if (socketRef.current?.connected || !isAuthenticated || isUnmountingRef.current || connectionState === 'connecting' || isShutdown) {
+      console.log("🔌 Skipping connection - already connected/connecting, not authenticated, or shutdown");
       return;
     }
 
@@ -198,10 +233,12 @@ export const useSocket = () => {
     setConnectionState('connecting');
 
     try {
+      console.log("🎫 Getting WebSocket token...");
       const wsTokenResponse = await api.auth.getWsToken();
       if (!wsTokenResponse.data.success || !wsTokenResponse.data.token) {
         throw new Error(`Failed to get WebSocket token: ${wsTokenResponse.data.message}`);
       }
+      console.log("✅ WebSocket token obtained successfully");
 
       // Clean up existing connection
       if (socketRef.current) {
@@ -209,13 +246,17 @@ export const useSocket = () => {
         socketRef.current.disconnect();
       }
 
-      const socket = io(SOCKET_URL, {
+      const socketOptions = {
+        path: "/socket/",
         transports: ["websocket"],
         timeout: 10000,
         forceNew: true,
         reconnection: false,
         auth: { token: wsTokenResponse.data.token },
-      });
+      };
+
+      const wssUrl = process.env.NEXT_PUBLIC_WSS_URL;
+      const socket = io(wssUrl, socketOptions);
 
       socketRef.current = socket;
       setupSocketListeners(socket);
@@ -239,59 +280,59 @@ export const useSocket = () => {
       setConnectionState('disconnected');
       setLastError(error instanceof Error ? error.message : 'Connection failed');
       
-      // Connection status now shown in header instead of toast
+      // Check if it's a 401 error (token expired)
+      if (error instanceof Error && error.message.includes('401')) {
+        console.log("🔄 Token expired, attempting refresh...");
+        // The api client will handle token refresh automatically
+      }
+      
       if (!isUnmountingRef.current) {
         handleReconnection();
       }
     }
-  }, [isAuthenticated, setupSocketListeners, toast]);
+  }, [isAuthenticated, setupSocketListeners, isShutdown]);
 
   // Reconnection logic
-  const handleReconnection = useCallback(() => {
-    if (reconnectAttempts >= maxReconnectAttempts || isUnmountingRef.current || connectionState === 'connecting') {
-      if (reconnectAttempts >= maxReconnectAttempts) {
-        console.log("❌ Max reconnection attempts reached");
-        toast({
-          title: "Connection failed",
-          description: "Unable to reconnect after multiple attempts",
-          variant: "destructive",
-        });
-      }
-      return;
-    }
-
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-    console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttempts + 1})`);
-    
-    reconnectTimeoutRef.current = setTimeout(() => {
-      if (isAuthenticated && !isUnmountingRef.current && connectionState !== 'connecting') {
-        setReconnectAttempts(prev => prev + 1);
-        connectSocket();
-      }
-    }, delay);
-  }, [reconnectAttempts, isAuthenticated, connectionState, connectSocket, toast]);
-
-  // Cleanup
-  const cleanup = useCallback(() => {
-    console.log("🧹 Cleaning up socket connection...");
+  const handleReconnection = useCallback((currentAttempt?: number) => {
+    const attempts = currentAttempt ?? reconnectAttempts;
     
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     
-    if (socketRef.current) {
-      socketRef.current.removeAllListeners();
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-    
-    setConnectionState('disconnected');
-    setJoinedRooms(new Set());
-    setReconnectAttempts(0);
-  }, []);
+    if (attempts >= maxReconnectAttempts || isUnmountingRef.current || connectionState === 'connecting' || isShutdown) {
+      if (attempts >= maxReconnectAttempts && !isShutdown) {
+        console.log("❌ Max reconnection attempts reached, shutting down");
+        setIsShutdown(true);
+        cleanup();
+        
+        const retryAction = () => {
+          setIsShutdown(false);
+          setReconnectAttempts(0);
+          connectSocket();
+        };
 
-  // FIXED: Aligned sendMessage with proper typing
+        toast({
+          title: "Connection Failed",
+          description: "Unable to connect to chat server. Click to retry.",
+          variant: "destructive",
+          action: <ToastAction altText="Retry Connection" onClick={retryAction}>Retry</ToastAction>
+        });
+      }
+      return;
+    }
+
+    const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
+    console.log(`🔄 Reconnecting in ${delay}ms (attempt ${attempts + 1})`);
+    
+    reconnectTimeoutRef.current = setTimeout(() => {
+      if (isAuthenticated && !isUnmountingRef.current && connectionState !== 'connecting' && !isShutdown) {
+        connectSocket();
+      }
+    }, delay);
+  }, [reconnectAttempts, isAuthenticated, connectionState, connectSocket, toast, isShutdown, cleanup]);
+
   const sendMessage = useCallback((data: SendMessageData) => {
     if (!socketRef.current?.connected) {
       toast({ 
@@ -308,32 +349,28 @@ export const useSocket = () => {
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // FIXED: Create properly typed optimistic message
     const optimisticMessage: Message = {
-      id: tempId, // Use tempId as temporary ID
-      tempId, // Keep tempId for tracking
+      id: tempId,
+      tempId,
       content: data.content.trim(),
       createdAt: new Date().toISOString(),
       userId: user?.id || '',
       username: user?.username || 'You',
       roomId: data.roomId,
       messageType: data.messageType || 'text',
-      status: 'sending', // Aligned with type definition
+      status: 'sending',
     };
 
     console.log("🚀 Sending optimistic message:", tempId);
     
-    // Add optimistic message
     setRealtimeMessages(prev => [...prev, optimisticMessage]);
 
-    // Send to server
     socketRef.current.emit('send_message', { 
       ...data, 
       content: data.content.trim(),
       tempId 
     });
 
-    // Auto-fail after timeout if no response
     setTimeout(() => {
       setRealtimeMessages(prev => 
         prev.map(msg => 
@@ -342,7 +379,7 @@ export const useSocket = () => {
             : msg
         )
       );
-    }, 30000); // 30 second timeout
+    }, 30000);
 
   }, [user, toast]);
 
@@ -358,14 +395,11 @@ export const useSocket = () => {
     }
 
     socketRef.current.emit("join_room", { roomId });
-    // console.log(`🏠 Joining room: ${roomId}`);
   }, [joinedRooms]);
 
   const leaveRoom = useCallback((roomId: string) => {
     if (!socketRef.current?.connected) return;
-
     socketRef.current.emit("leave_room", { roomId });
-    // console.log(`🚪 Leaving room: ${roomId}`);
   }, []);
 
   const startTyping = useCallback((roomId: string) => {
@@ -385,16 +419,32 @@ export const useSocket = () => {
     setRealtimeMessages([]);
   }, []);
 
-  // Connection management effects
+  // Connection management effects - Auto-connect after authentication
   useEffect(() => {
-    if (isAuthenticated && connectionState === 'disconnected' && !socketRef.current?.connected) {
-      console.log("🔌 Auth state changed, connecting socket...");
-      connectSocket();
+    console.log("🔌 Connection effect triggered:", { 
+      isAuthenticated, 
+      connectionState, 
+      connected: socketRef.current?.connected, 
+      isShutdown 
+    });
+    
+    // Reset unmounting flag when effect runs
+    isUnmountingRef.current = false;
+    
+    if (isAuthenticated && connectionState === 'disconnected' && !socketRef.current?.connected && !isShutdown) {
+      console.log("🔌 Auth state changed, auto-connecting socket...");
+      // Small delay to ensure cookies are set and avoid multiple calls
+      const timer = setTimeout(() => {
+        if (isAuthenticated && connectionState === 'disconnected' && !socketRef.current?.connected && !isUnmountingRef.current) {
+          connectSocket();
+        }
+      }, 500);
+      return () => clearTimeout(timer);
     } else if (!isAuthenticated && socketRef.current) {
       console.log("🔌 Auth lost, cleaning up socket...");
       cleanup();
     }
-  }, [isAuthenticated, connectSocket, cleanup]);
+  }, [isAuthenticated, isShutdown]);
 
   // Cleanup on unmount
   useEffect(() => {

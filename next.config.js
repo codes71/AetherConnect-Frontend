@@ -1,7 +1,26 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['genkit']
+    serverExternalPackages: ['genkit']
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'picsum.photos',
+        port: '',
+        pathname: '/**',
+      },
+    ],
+  },
+  async rewrites() {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${apiUrl}/:path*`,
+      },
+    ]
   },
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
@@ -10,6 +29,7 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   generateEtags: false,
+  allowedDevOrigins: ["192.168.1.6"],
   
   // Security headers
   async headers() {

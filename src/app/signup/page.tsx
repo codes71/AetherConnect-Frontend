@@ -20,7 +20,9 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 const signupSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+  username: z.string().min(1, 'Username is required'),
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
@@ -42,7 +44,7 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupData) => {
     setError(null);
     try {
-      const success = await registerUser(data.name, data.email, data.password);
+      const success = await registerUser(data.username, data.firstName, data.lastName, data.email, data.password);
       if (success) {
         router.push('/chat');
       } else {
@@ -77,9 +79,19 @@ export default function SignupPage() {
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="name">Name</Label>
-              <Input id="name" placeholder="Max" {...register('name')} />
-              {errors.name && <p className="text-xs text-red-500">{errors.name.message}</p>}
+              <Label htmlFor="username">Username</Label>
+              <Input id="username" placeholder="john_doe" {...register('username')} />
+              {errors.username && <p className="text-xs text-red-500">{errors.username.message}</p>}
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="firstName">First Name</Label>
+              <Input id="firstName" placeholder="John" {...register('firstName')} />
+              {errors.firstName && <p className="text-xs text-red-500">{errors.firstName.message}</p>}
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="lastName">Last Name</Label>
+              <Input id="lastName" placeholder="Doe" {...register('lastName')} />
+              {errors.lastName && <p className="text-xs text-red-500">{errors.lastName.message}</p>}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>

@@ -1,26 +1,21 @@
 'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, Paperclip, Smile, Sparkles } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSocketContext } from '@/context/socket-context';
+import { useAuth } from '@/context/auth-context';
 
 interface MessageInputProps {
-  onSendMessage: (content: string) => void;
-  onTypingStart: () => void;
-  onTypingStop: () => void;
-  disabled?: boolean;
+  conversationId: string;
   lastMessage?: string;
 }
 
-export function MessageInput({ 
-  onSendMessage, 
-  onTypingStart, 
-  onTypingStop, 
-  disabled = false,
-  lastMessage
-}: MessageInputProps) {
+export function MessageInput({ conversationId, lastMessage }: MessageInputProps) {
+  const { actions } = useSocketContext();
+  const { user } = useAuth();
   const [content, setContent] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -42,12 +37,14 @@ export function MessageInput({
   const loadSmartReplies = async (message: string) => {
     setIsLoadingReplies(true);
     try {
-      const response = await fetch('/api/smart-replies', {
+      const response = await fetch('/smart-replies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latestMessage: message })
+        body: JSON.stringify({
+          latestMessage: message,
+        }),
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setSmartReplies(data.suggestions || []);
@@ -65,103 +62,79 @@ export function MessageInput({
     textareaRef.current?.focus();
   };
 
-  // Auto-resize textarea
-  const adjustTextareaHeight = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
-    }
-  }, []);
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [content, adjustTextareaHeight]);
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setContent(value);
-
-    // Handle typing indicators
-    if (value.trim() && !isTypingRef.current) {
+  const handleTyping = () => {
+    if (!isTypingRef.current) {
+      actions.startTyping(conversationId);
       isTypingRef.current = true;
-      onTypingStart();
     }
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    // Set new timeout to stop typing
-    if (value.trim()) {
-      typingTimeoutRef.current = setTimeout(() => {
-        if (isTypingRef.current) {
-          isTypingRef.current = false;
-          onTypingStop();
-        }
-      }, 1500);
-    } else if (isTypingRef.current) {
+    typingTimeoutRef.current = setTimeout(() => {
+      actions.stopTyping(conversationId);
       isTypingRef.current = false;
-      onTypingStop();
-    }
-  }, [onTypingStart, onTypingStop]);
+    }, 1000);
+  };
 
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    const trimmedContent = content.trim();
-    if (!trimmedContent || disabled || isSending) return;
+    if (!content.trim() || isSending) return;
 
-    // Stop typing indicator immediately
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    if (isTypingRef.current) {
-      isTypingRef.current = false;
-      onTypingStop();
-    }
-
-    setIsSending(true);
     const originalContent = content;
     setContent(''); // Clear immediately for better UX
     setSmartReplies([]); // Clear smart replies
     
     try {
-      await onSendMessage(trimmedContent);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      setContent(originalContent); // Restore on error
-    } finally {
-      setIsSending(false);
-    }
-  }, [content, disabled, isSending, onSendMessage, onTypingStop]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  }, [handleSubmit]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
+      setIsSending(true);
+      
+      // Stop typing indicator
+      if (isTypingRef.current) {
+        actions.stopTyping(conversationId);
+        isTypingRef.current = false;
+      }
+      
+      // Clear typing timeout
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      if (isTypingRef.current) {
-        onTypingStop();
-      }
-    };
-  }, [onTypingStop]);
+
+      // Send message via socket
+      actions.sendMessage({
+        roomId: conversationId,
+        content: originalContent.trim(),
+        messageType: 'text'
+      });
+
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      // Restore content on error
+      setContent(originalContent);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setContent(e.target.value);
+    handleTyping();
+  };
 
   const hasContent = content.trim().length > 0;
   const showSmartReplies = smartReplies.length > 0 && !hasContent;
 
   return (
     <div className={cn(
-      "border-t bg-background transition-all duration-200",
+      "border rounded-lg bg-background transition-colors",
       isFocused && "border-primary/20 shadow-sm"
     )}>
       {/* Smart Reply Suggestions - Expand container */}
@@ -172,6 +145,7 @@ export function MessageInput({
               <Button
                 key={index}
                 variant="outline"
+                size="sm"
                 onClick={() => handleSmartReply(reply)}
                 className="text-sm py-1 px-3 rounded-full hover:bg-primary hover:text-primary-foreground transition-colors"
               >
@@ -182,65 +156,33 @@ export function MessageInput({
         </div>
       )}
 
-      <div className="flex items-end gap-3 p-4 bg-background">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="mb-1 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
-          disabled={disabled}
-        >
-          <Paperclip className="h-4 w-4" />
-        </Button>
-
-        <div className="flex-1 relative">
+      <form onSubmit={handleSubmit} className="flex items-end gap-2 p-4">
+        <div className="flex-1">
           <Textarea
             ref={textareaRef}
             value={content}
-            onChange={handleInputChange}
+            onChange={handleChange}
             onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder={disabled ? "Connecting..." : "Type a message..."}
-            disabled={disabled}
-            className={cn(
-              "min-h-[44px] max-h-[120px] resize-none transition-all duration-200 text-sm",
-              "border-2 bg-muted/50 focus-visible:ring-2 focus-visible:ring-primary/20 rounded-2xl",
-              hasContent && "bg-background border-border shadow-sm",
-              isFocused && "border-primary/30 shadow-md"
-            )}
+            placeholder={`Message as ${user?.username || 'User'}...`}
+            className="min-h-[44px] max-h-32 resize-none border-0 p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
             rows={1}
           />
         </div>
-
         <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="mb-1 text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors"
-          disabled={disabled}
-        >
-          <Smile className="h-4 w-4" />
-        </Button>
-
-        <Button 
-          onClick={handleSubmit}
-          disabled={!hasContent || disabled || isSending}
-          size="icon"
-          className={cn(
-            "mb-1 transition-all duration-300 rounded-full h-11 w-11",
-            hasContent 
-              ? "bg-primary text-primary-foreground hover:bg-primary/90 scale-100 shadow-lg hover:shadow-xl" 
-              : "bg-muted text-muted-foreground scale-90 shadow-sm"
-          )}
+          type="submit"
+          size="sm"
+          disabled={!hasContent || isSending}
+          className="shrink-0"
         >
           {isSending ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Send className="h-5 w-5" />
+            <Send className="h-4 w-4" />
           )}
         </Button>
-      </div>
+      </form>
     </div>
   );
 }

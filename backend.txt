@@ -41,12 +41,25 @@ Authentication is cookie-based to enhance security (HttpOnly cookies prevent XSS
     -   For any subsequent HTTP request to a protected endpoint, the browser will automatically send the `accessToken` cookie.
     -   The API Gateway validates this token.
 
-4.  **Token Refresh**: `POST /api/auth/refresh`
+4.  **Token Refresh**: `POST /api/auth/refresh` ⚡ **SECURITY ENHANCED**
     -   If the `accessToken` expires, the frontend should call this endpoint.
-    -   The API Gateway uses the `refreshToken` (which should still be valid) to generate a new `accessToken` and sets it as a new cookie.
+    -   **Token Rotation**: Each refresh generates BOTH a new `accessToken` AND a new `refreshToken`.
+    -   **Replay Protection**: Old refresh tokens are immediately invalidated and cannot be reused.
+    -   **Single-Use Tokens**: Each refresh token can only be used once, preventing token theft attacks.
+    -   The API Gateway sets both new tokens as HttpOnly cookies.
 
-5.  **Logout**: `POST /api/auth/logout`
-    -   This endpoint clears the `accessToken` and `refreshToken` cookies.
+5.  **Logout**: `POST /api/auth/logout` ⚡ **SECURITY ENHANCED**
+    -   **Requires Authentication**: Must include valid `accessToken` cookie.
+    -   **Backend Invalidation**: Invalidates the refresh token in the database (prevents stolen token usage).
+    -   **Cookie Clearing**: Clears both `accessToken` and `refreshToken` cookies from the browser.
+    -   **Complete Security**: Even if an attacker has stolen tokens, logout renders them useless.
+
+### 🔒 Security Features (Sept 2025 Update)
+
+- **Token Rotation**: Every refresh generates new tokens, old ones become invalid
+- **Replay Attack Prevention**: Reusing old tokens returns "Token already used or invalid"
+- **Logout Invalidation**: Backend invalidates tokens, not just browser cookies
+- **Single-Use Tokens**: Each refresh token works exactly once
 
 ## 4. WebSocket Communication
 
@@ -142,12 +155,21 @@ Authentication is cookie-based to enhance security (HttpOnly cookies prevent XSS
         }
         ```
 
--   `POST /api/auth/logout`: Log out and clear auth cookies.
+-   `POST /api/auth/logout`: Log out and clear auth cookies. ⚡ **SECURITY ENHANCED**
+    -   **Authentication Required**: Must include valid `accessToken` cookie
+    -   **Backend Token Invalidation**: Invalidates refresh token in database
     -   **Success Response (200)**
         ```json
         {
           "success": true,
           "message": "Logged out successfully"
+        }
+        ```
+    -   **Error Response (401)** - If not authenticated
+        ```json
+        {
+          "success": false,
+          "message": "Unauthorized"
         }
         ```
 

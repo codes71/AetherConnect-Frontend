@@ -26,7 +26,6 @@ export function ChatView({ conversationId }: ChatViewProps) {
   const { findRoomById } = useRooms();
   
   const [room, setRoom] = useState<Room | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentRoomRef = useRef<string | null>(null);
   const lastMessageCountRef = useRef(0);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(false);
@@ -96,7 +95,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
   useEffect(() => {
     const messageCount = allMessages.length;
     if (messageCount > lastMessageCountRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      setShouldAutoScroll(true);
     }
     lastMessageCountRef.current = messageCount;
   }, [allMessages]);
@@ -179,10 +178,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
       {/* Fixed Input */}
       <div className="shrink-0">
         <MessageInput
-          onSendMessage={handleSendMessage}
-          onTypingStart={handleTypingStart}
-          onTypingStop={handleTypingStop}
-          disabled={!isConnected}
+          conversationId={conversationId}
           lastMessage={lastOtherMessage}
         />
       </div>
