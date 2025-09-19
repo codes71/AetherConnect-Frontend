@@ -14,8 +14,8 @@ interface AuthApi {
 }
 
 interface MessageApi {  
-  getRooms: () => Promise<AxiosResponse<Room[]>>;
-  getMessages: (roomId: string, page: number, limit: number) => Promise<AxiosResponse<Message[]>>;
+  getRooms: () => Promise<AxiosResponse<{ rooms: Room[] }>>;
+  getMessages: (roomId: string, page: number, limit: number) => Promise<AxiosResponse<{ messages: Message[] }>>;
 }
 
 interface AxiosErrorResponseData {
@@ -227,9 +227,9 @@ class ApiClient {
     };
 
     this.message = {
-      getRooms: () => this.axiosInstance.get('/rooms'),
+      getRooms: () => this.axiosInstance.get<{ rooms: Room[] }>('/rooms'),
       getMessages: (roomId: string, page: number = 1, limit: number = 50) => 
-        this.axiosInstance.get(`/rooms/${roomId}/messages`, { params: { page, limit } }),
+        this.axiosInstance.get<{ messages: Message[] }>(`/rooms/${roomId}/messages`, { params: { page, limit } }),
     };
   }
 }

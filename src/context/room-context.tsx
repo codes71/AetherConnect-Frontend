@@ -39,22 +39,16 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true);
     try {
-      const { success, data } = await enhancedApiCall({
+      const { success, data } = await enhancedApiCall<{ rooms: Room[] }>({
         apiCall: api.message.getRooms(),
         errorContext: 'rooms-fetch',
         suppressErrorToast: true,
       });
 
-      if (success && data) {
-        // The API returns an object with a 'rooms' property, not a raw array.
-        const roomsList = (data as any).rooms;
-        if (Array.isArray(roomsList)) {
-          setRooms(roomsList);
-        } else {
-          console.warn("API response for rooms did not contain a 'rooms' array:", data);
-          setRooms([]);
-        }
+      if (success && data && Array.isArray(data.rooms)) {
+        setRooms(data.rooms);
       } else {
+        console.warn("API response for rooms did not contain a 'rooms' array:", data);
         setRooms([]);
       }
     } catch (error) {
