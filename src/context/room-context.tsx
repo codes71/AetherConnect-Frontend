@@ -45,8 +45,15 @@ export function RoomProvider({ children }: { children: ReactNode }) {
         suppressErrorToast: true,
       });
 
-      if (success && Array.isArray(data)) {
-        setRooms(data);
+      if (success && data) {
+        // The API returns an object with a 'rooms' property, not a raw array.
+        const roomsList = (data as any).rooms;
+        if (Array.isArray(roomsList)) {
+          setRooms(roomsList);
+        } else {
+          console.warn("API response for rooms did not contain a 'rooms' array:", data);
+          setRooms([]);
+        }
       } else {
         setRooms([]);
       }

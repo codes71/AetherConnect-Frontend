@@ -28,12 +28,22 @@ export const useMessageHistory = (roomId: string) => {
           suppressErrorToast: currentPage > 1, // Only show toast for initial load failures
         });
 
-        if (success && Array.isArray(data)) {
-          const newMessages = data;
-          setHistoryMessages((prev) =>
-            currentPage === 1 ? newMessages : [...prev, ...newMessages]
-          );
-          setHasMore(newMessages.length === MESSAGE_LIMIT);
+        if (success && data) {
+          // The API returns an object with a 'messages' property, not a raw array.
+          const newMessages = (data as any).messages;
+
+          if (Array.isArray(newMessages)) {
+            setHistoryMessages((prev) =>
+              currentPage === 1 ? newMessages : [...prev, ...newMessages]
+            );
+            setHasMore(newMessages.length === MESSAGE_LIMIT);
+          } else {
+            console.warn("API response for messages did not contain a 'messages' array:", data);
+            if (currentPage === 1) {
+              setHistoryMessages([]);
+            }
+            setHasMore(false);
+          }
         } else {
           if (currentPage === 1) {
             setHistoryMessages([]);
