@@ -50,7 +50,7 @@ export default function SignupPage() {
       } else {
         setError('Failed to create an account. Please try again.');
       }
-    } catch (error) {
+    } catch {
       setError('An unexpected error occurred. Please try again.');
     }
   };

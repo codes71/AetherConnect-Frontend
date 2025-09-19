@@ -1,27 +1,27 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Button } from '@/components/ui/button';
+import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Logo } from '@/components/logo';
-import { useAuth } from '@/context/auth-context';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Logo } from "@/components/logo";
+import { useAuth } from "@/context/auth-context";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z.string().min(1, 'Password is required'),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
 });
 
 type LoginData = z.infer<typeof loginSchema>;
@@ -40,22 +40,17 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginData) => {
     setError(null);
-    try {
-      const success = await login(data.email, data.password); // Call AuthContext's login
-      if (success) {
-        router.push('/chat');
-      } else {
-        setError('Invalid email or password. Please try again.'); // AuthContext's login already shows toast
-      }
-    } catch (error) {
-      // This catch block might not be reached if AuthContext's login handles errors internally
-      setError('An unexpected error occurred. Please try again.');
+    const success = await login(data.email, data.password); // Call AuthContext's login
+    if (success) {
+      router.push("/chat");
+    } else {
+      setError("Invalid email or password. Please try again.");
     }
   };
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/chat');
+      router.push("/chat");
     }
   }, [isAuthenticated, router]);
 
@@ -82,10 +77,12 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 placeholder="m@example.com"
-                {...register('email')}
+                {...register("email")}
                 autoComplete="email"
               />
-              {errors.email && <p className="text-xs text-red-500">{errors.email.message}</p>}
+              {errors.email && (
+                <p className="text-xs text-red-500">{errors.email.message}</p>
+              )}
             </div>
             <div className="grid gap-2">
               <div className="flex items-center">
@@ -97,16 +94,25 @@ export default function LoginPage() {
                   Forgot your password?
                 </Link>
               </div>
-              <Input id="password" type="password" {...register('password')} autoComplete="current-password" />
-              {errors.password && <p className="text-xs text-red-500">{errors.password.message}</p>}
+              <Input
+                id="password"
+                type="password"
+                {...register("password")}
+                autoComplete="current-password"
+              />
+              {errors.password && (
+                <p className="text-xs text-red-500">
+                  {errors.password.message}
+                </p>
+              )}
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? 'Logging in...' : 'Login'}
+              {isSubmitting ? "Logging in..." : "Login"}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm">
-            Don&apos;t have an account?{' '}
+            Don&apos;t have an account?{" "}
             <Link href="/signup" className="underline">
               Sign up
             </Link>

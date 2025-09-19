@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 
 // This middleware is now simplified to remove authentication checks.
 // The client-side AuthProvider is responsible for handling routing based on auth state.
-export function middleware(req: NextRequest) {
+export function middleware() {
   return NextResponse.next();
 }
 

@@ -1,21 +1,35 @@
-'use client';
+"use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { User } from '@/lib/types';
-import api from '@/lib/api';
-import { useToast } from '@/hooks/use-toast';
-import { logger } from '@/lib/utils';
-import { AxiosError } from 'axios';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useCallback,
+  useRef,
+} from "react";
+import { useRouter } from "next/navigation";
+import { User } from "@/lib/types";
+import api from "@/api/api";
+import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/utils";
+import { enhancedApiCall, ApiHelpers } from "@/api/api-helpers";
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-
   login: (email: string, password: string) => Promise<boolean>;
-  register: (username: string, firstName: string, lastName: string, email: string, password: string) => Promise<boolean>;
+  register: (
+    username: string,
+    firstName: string,
+    lastName: string,
+    email: string,
+    password: string
+  ) => Promise<boolean>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,174 +46,191 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const loadUser = useCallback(async () => {
-    logger.log('Attempting to load user session...');
-    logger.log('Current user state before loading:', !!userRef.current);
-    try {
-      // The Axios interceptor will handle token refreshes automatically.
-      // We just need to wait for the final result.
-      const response = await api.auth.getProfile();
-      if (response.data.success) {
-        setUser(response.data.user);
-        logger.log('User session loaded successfully.');
-      } else {
-        // This case might occur if the API call succeeds but business logic fails.
-        setUser(null);
-      }
-    } catch (error: unknown) {
-      // This block will only be reached if the getProfile call fails *after*
-      // the interceptor has already tried and failed to refresh the token.
-      // In this case, the user is truly unauthenticated.
-      const axiosError = error as AxiosError;
-      logger.info('Failed to load user session:', axiosError.response?.data || axiosError.message || axiosError);
+    logger.log("🔍 Loading user session...");
+    setIsLoading(true);
+
+    const { success, data } = await ApiHelpers.auth.profile(
+      api.auth.getProfile(),
+      toast
+    );
+
+    if (success && data?.success) {
+      setUser(data.user);
+      logger.log("✅ User session loaded successfully");
+    } else {
       setUser(null);
-    } finally {
-      setIsLoading(false);
+    }
+    setIsLoading(false);
+  }, [toast]);
+
+  const logout = useCallback(
+    async (options?: { suppressToast?: boolean; redirect?: boolean }) => {
+      const { suppressToast = false, redirect = true } = options || {};
+
+      try {
+        const { success } = await enhancedApiCall({
+          apiCall: api.auth.logout(),
+          errorContext: "auth-logout",
+          suppressErrorToast: true,
+        });
+
+        if (success && !suppressToast) {
+          toast({
+            title: "Logged out",
+            description: "You have been logged out successfully.",
+          });
+        }
+      } catch (error) {
+        // Silently fail logout API call - we still want to clear local state
+        logger.warn(
+          "Logout API call failed, but proceeding with local cleanup",
+          error
+        );
+      } finally {
+        setUser(null);
+        if (redirect) {
+          router.push("/login");
+        }
+      }
+    },
+    [router, toast]
+  );
+
+  const refreshUser = useCallback(async () => {
+    logger.log("🔄 Refreshing user data...");
+    const { success, data } = await enhancedApiCall({
+      apiCall: api.auth.getProfile(),
+      errorContext: "auth-refresh-profile",
+      suppressErrorToast: true,
+    });
+
+    if (success && data?.success) {
+      setUser(data.user);
     }
   }, []);
-
-  const logout = useCallback(async (options?: { suppressToast?: boolean }) => {
-    try {
-      await api.auth.logout();
-      if (!options?.suppressToast) {
-        toast({
-          title: 'Logged out',
-          description: 'You have been logged out successfully.',
-        });
-      }
-    } catch (error: AxiosError) {
-      logger.error('Logout API call failed:', error);
-      // Even if the API fails, we must clear the client state.
-    } finally {
-      // The server is responsible for clearing HttpOnly cookies.
-      // We just clear the user state and redirect.
-      setUser(null);
-      router.push('/login');
-    }
-  }, [router, toast]);
 
   useEffect(() => {
     loadUser();
   }, [loadUser]);
 
   useEffect(() => {
-    // This effect handles global auth events dispatched from the API client
-    // when a token refresh fails permanently.
     const handleAuthError = (title: string, description: string) => {
-      // We call a version of logout that doesn't show a toast,
-      // because we're about to show our own specific one.
-      logout({ suppressToast: true });
+      logout({ suppressToast: true, redirect: false });
       toast({
         title,
         description,
-        variant: 'destructive',
+        variant: "destructive",
       });
     };
 
-    const handleSessionExpired = () => {
-      handleAuthError('Session Expired', 'Please log in again.');
+    const handleSessionExpired = (event: CustomEvent) => {
+      handleAuthError(
+        "Session Expired",
+        event.detail?.message || "Please log in again."
+      );
     };
 
     const handleTokenReplay = (event: CustomEvent) => {
-      handleAuthError('Security Alert', event.detail?.message || 'A security violation was detected. Please log in again.');
+      handleAuthError(
+        "Security Alert",
+        event.detail?.message ||
+          "A security violation was detected. Please log in again."
+      );
     };
 
-    window.addEventListener('auth:session-expired', handleSessionExpired);
-    window.addEventListener('auth:token-replay-detected', handleTokenReplay as EventListener);
-    
+    window.addEventListener(
+      "auth:session-expired",
+      handleSessionExpired as EventListener
+    );
+    window.addEventListener(
+      "auth:token-replay-detected",
+      handleTokenReplay as EventListener
+    );
+
     return () => {
-      window.removeEventListener('auth:session-expired', handleSessionExpired);
-      window.removeEventListener('auth:token-replay-detected', handleTokenReplay as EventListener);
+      window.removeEventListener(
+        "auth:session-expired",
+        handleSessionExpired as EventListener
+      );
+      window.removeEventListener(
+        "auth:token-replay-detected",
+        handleTokenReplay as EventListener
+      );
     };
   }, [toast, logout]);
 
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    logger.log('Login function called with email:', email);
-    setIsLoading(true);
-    try {
-      const response = await api.auth.login({ email, password });
-      if (response.data.success) {
-        setUser(response.data.user);
-        logger.log('Login successful, user set:', response.data.user);
-        toast({
-          title: 'Login successful',
-          description: 'Welcome back!',
-        });
-        return true;
-      } else {
-        toast({
-          title: 'Login failed',
-          description: response.data.message || 'Invalid credentials',
-          variant: 'destructive', 
-        });
-        return false;
-      }
-    } catch (error: AxiosError) {
-      logger.error('Login error:', error.response?.data || error.message || error);
-      toast({
-        title: 'Login failed',
-        description: error.response?.data?.message || 'A network error occurred.',
-        variant: 'destructive',
-      });
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
+  const login = useCallback(
+    async (email: string, password: string): Promise<boolean> => {
+      setIsLoading(true);
+      try {
+        const { success, data } = await ApiHelpers.auth.login(
+          api.auth.login({ email, password }),
+          toast
+        );
 
-  const register = useCallback(async (username: string, firstName: string, lastName: string, email: string, password: string): Promise<boolean> => {
-    setIsLoading(true);
-    try {
-      const response = await api.auth.register({ username, firstName, lastName, email, password });
-      if (response.data.success) {
-        setUser(response.data.user);
-        toast({
-          title: 'Registration successful',
-          description: 'Welcome!',
-        });
-        return true;
-      } else {
-        toast({
-          title: 'Registration failed',
-          description: response.data.message || 'Please check your details.',
-          variant: 'destructive',
-        });
+        if (success && data?.success) {
+          setUser(data.user);
+          logger.log("✅ Login successful");
+          return true;
+        }
         return false;
+      } catch (error) {
+        logger.error("Login failed:", error);
+        return false;
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error: AxiosError) {
-      logger.error('Registration error:', error.response?.data || error.message || error);
-      toast({
-        title: 'Registration failed',
-        description: error.response?.data?.message || 'A network error occurred.',
-        variant: 'destructive',
-      });
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [toast]);
+    },
+    [toast]
+  );
 
-  // The `refreshAuth` function is an internal concern of the api client,
-  // so it's removed from the context's public value.
-  const value = {
+  const register = useCallback(
+    async (
+      username: string,
+      firstName: string,
+      lastName: string,
+      email: string,
+      password: string
+    ): Promise<boolean> => {
+      setIsLoading(true);
+      try {
+        const { success, data } = await ApiHelpers.auth.register(
+          api.auth.register({ username, firstName, lastName, email, password }),
+          toast
+        );
+
+        if (success && data?.success) {
+          setUser(data.user);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        logger.error("Registration failed:", error);
+        return false;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [toast]
+  );
+
+  const value: AuthContextType = {
     user,
     login,
     register,
     logout,
+    refreshUser,
     isAuthenticated: !!user,
-    isLoading
+    isLoading,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }

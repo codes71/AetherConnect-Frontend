@@ -8,7 +8,8 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { logger } from "@/lib/utils";
-import api from "@/lib/api";
+import api from "@/api/api";
+import { enhancedApiCall } from "@/api/api-helpers";
 
 type SendMessageData = {
   roomId: string;
@@ -18,6 +19,11 @@ type SendMessageData = {
 
 type ConnectionState = "disconnected" | "connecting" | "connected";
 
+interface SocketError extends Error {
+  code?: string;
+  context?: string;
+}
+
 export const useSocket = () => {
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
@@ -25,6 +31,7 @@ export const useSocket = () => {
   const socketRef = useRef<Socket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const failTimersRef = useRef(new Map<string, NodeJS.Timeout>());
+  const connectionAttemptRef = useRef(0);
 
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("disconnected");
@@ -36,6 +43,7 @@ export const useSocket = () => {
   const [isShutdown, setIsShutdown] = useState(false);
 
   const maxReconnectAttempts = 5;
+  const maxConnectionAttempts = 3;
 
   const connectSocketFnRef = useRef<() => Promise<void>>();
   const stateRef = useRef({ connectionState, isAuthenticated, isShutdown });
@@ -46,22 +54,30 @@ export const useSocket = () => {
 
   const cleanup = useCallback(() => {
     logger.log("🧹 Cleaning up socket...");
+
+    // Clear all timeouts
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-    failTimersRef.current.forEach((t) => clearTimeout(t));
+
+    failTimersRef.current.forEach((timer) => clearTimeout(timer));
     failTimersRef.current.clear();
+
+    // Cleanup socket
     if (socketRef.current) {
       socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
       socketRef.current = null;
     }
+
+    // Reset state
     setConnectionState("disconnected");
     setJoinedRooms(new Set());
     setTypingUsers(new Set());
     setReconnectAttempts(0);
     setLastError(null);
+    connectionAttemptRef.current = 0;
   }, []);
 
   const handleReconnection = useCallback(
@@ -70,8 +86,10 @@ export const useSocket = () => {
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
+
       const { connectionState: currentState, isShutdown: currentShutdown } =
         stateRef.current;
+
       if (
         currentAttempt >= maxReconnectAttempts ||
         currentState === "connecting" ||
@@ -81,11 +99,13 @@ export const useSocket = () => {
           logger.log("❌ Max reconnection attempts reached");
           setIsShutdown(true);
           cleanup();
+
           const retryAction = () => {
             setIsShutdown(false);
             setReconnectAttempts(0);
             connectSocketFnRef.current?.();
           };
+
           toast({
             title: "Connection Failed",
             description: "Unable to connect. Click to retry.",
@@ -99,43 +119,58 @@ export const useSocket = () => {
         }
         return;
       }
-      const delay =
-        Math.min(1000 * Math.pow(2, currentAttempt), 30000) +
-        Math.random() * 1000;
-      logger.log(`🔄 Reconnecting in ${delay}ms (attempt ${currentAttempt})`);
+
+      const baseDelay = Math.min(1000 * Math.pow(2, currentAttempt), 30000);
+      const jitter = Math.random() * 1000;
+      const delay = baseDelay + jitter;
+
+      logger.log(
+        `🔄 Reconnecting in ${delay}ms (attempt ${
+          currentAttempt + 1
+        }/${maxReconnectAttempts})`
+      );
+
       reconnectTimeoutRef.current = setTimeout(() => {
         const {
           isAuthenticated: latestAuth,
           connectionState: latestState,
           isShutdown: latestShutdown,
         } = stateRef.current;
-        if (
-          latestAuth &&
-          latestState !== "connecting" &&
-          !latestShutdown
-        ) {
+
+        if (latestAuth && latestState !== "connecting" && !latestShutdown) {
           connectSocketFnRef.current?.();
         }
       }, delay);
     },
-    [cleanup, toast]
+    [cleanup, toast, maxReconnectAttempts]
   );
-  
+
   const setupSocketListeners = useCallback(
     (socket: Socket) => {
+      const handleSocketError = (error: unknown) => {
+        const socketError = error as SocketError;
+        logger.error("💥 Socket error:", socketError);
+        setLastError(socketError.message || "Socket error occurred");
+        setConnectionState("disconnected");
+      };
+
       socket.on("connect", () => {
         logger.log("✅ Transport connected to server");
         setReconnectAttempts(0);
+        connectionAttemptRef.current = 0;
       });
+
       socket.on("connected", (data) => {
         logger.log("🎯 Auth success:", data);
         setConnectionState("connected");
       });
+
       socket.on("disconnect", (reason) => {
         logger.log("❌ Disconnected:", reason);
         setConnectionState("disconnected");
         setJoinedRooms(new Set());
         setTypingUsers(new Set());
+
         if (reason !== "io client disconnect") {
           setReconnectAttempts((prev) => {
             const next = prev + 1;
@@ -144,40 +179,52 @@ export const useSocket = () => {
           });
         }
       });
-      socket.on("error", (data) => {
-        logger.error("💥 Socket error:", data);
-        setLastError(data.message || "Socket error occurred");
-        setConnectionState("disconnected");
-      });
+
+      socket.on("error", handleSocketError);
+      socket.on("connect_error", handleSocketError);
+
       socket.on("new_message", (message: Message) => {
-        setRealtimeMessages((prev) => [...prev, { ...message, status: "sending" }]);
+        setRealtimeMessages((prev) => {
+          return [...prev, { ...message, status: "sending" }];
+        });
       });
-       socket.on("user_typing", (data) => {
+
+      socket.on("user_typing", (data) => {
         if (data.userId !== user?.id) {
           setTypingUsers((prev) => {
-            const n = new Set(prev);
-            data.isTyping ? n.add(data.username) : n.delete(data.username);
-            return n;
+            const newSet = new Set(prev);
+            // --- FIX STARTS HERE ---
+            if (data.isTyping) {
+              newSet.add(data.username);
+            } else {
+              newSet.delete(data.username);
+            }
+            // --- FIX ENDS HERE ---
+            return newSet;
           });
         }
       });
-      socket.on("message_confirmed", (data: { tempId: string; id: string; status: "confirmed" }) => {
-        logger.log("✉️ Message confirmed:");
-        setRealtimeMessages((prev) =>
-          prev.map((m) => {
-            if (m.tempId === data.tempId) {
-              // Clear the fail timer if the message is confirmed
-              const timer = failTimersRef.current.get(data.tempId);
-              if (timer) {
-                clearTimeout(timer);
-                failTimersRef.current.delete(data.tempId);
+
+      socket.on(
+        "message_confirmed",
+        (data: { tempId: string; id: string; status: "confirmed" }) => {
+          logger.log("✉️ Message confirmed:", data.tempId);
+          setRealtimeMessages((prev) =>
+            prev.map((m) => {
+              if (m.tempId === data.tempId) {
+                const timer = failTimersRef.current.get(data.tempId);
+                if (timer) {
+                  clearTimeout(timer);
+                  failTimersRef.current.delete(data.tempId);
+                }
+                return { ...m, id: data.id, status: data.status };
               }
-              return { ...m, id: data.id, status: data.status };
-            }
-            return m;
-          })
-        );
-      });
+              return m;
+            })
+          );
+        }
+      );
+
       socket.on("message_error", (data: { tempId: string; error: string }) => {
         logger.error("❌ Message error:", data);
         setRealtimeMessages((prev) =>
@@ -185,24 +232,27 @@ export const useSocket = () => {
             m.tempId === data.tempId ? { ...m, status: "failed" } : m
           )
         );
+
         toast({
           title: "Message Failed",
           description: data.error || "An unknown error occurred.",
           variant: "destructive",
         });
       });
+
       socket.on("joined_room", (data) => {
         setJoinedRooms((prev) => new Set(prev).add(data.roomId));
       });
+
       socket.on("left_room", (data) => {
         setJoinedRooms((prev) => {
-          const n = new Set(prev);
-          n.delete(data.roomId);
-          return n;
+          const newSet = new Set(prev);
+          newSet.delete(data.roomId);
+          return newSet;
         });
       });
     },
-    [user?.id, handleReconnection]
+    [user?.id, handleReconnection, toast]
   );
 
   const connectSocket = useCallback(async () => {
@@ -214,44 +264,62 @@ export const useSocket = () => {
     ) {
       return;
     }
+
+    // Prevent too many connection attempts
+    if (connectionAttemptRef.current >= maxConnectionAttempts) {
+      logger.warn("Too many connection attempts, backing off");
+      return;
+    }
+
+    connectionAttemptRef.current++;
     setConnectionState("connecting");
     setLastError(null);
+
     try {
       logger.log("🔌 Attempting to connect socket...");
-      const wsTokenResponse = await api.auth.getWsToken();
-      if (!wsTokenResponse.data.success || !wsTokenResponse.data.token) {
-        throw new Error("Failed to get WebSocket token");
+
+      const { success, data, error } = await enhancedApiCall({
+        apiCall: api.auth.getWsToken(),
+        errorContext: "socket-connection",
+        suppressErrorToast: true,
+      });
+
+      if (!success || !data?.token) {
+        throw error || new Error("Failed to get WebSocket token");
       }
-      if (socketRef.current) socketRef.current.disconnect();
+
+      // Cleanup existing socket
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+
       const socket = io(process.env.NEXT_PUBLIC_WSS_URL!, {
         path: "/socket/",
         transports: ["websocket"],
         timeout: 10000,
         forceNew: true,
         reconnection: false,
-        auth: { token: wsTokenResponse.data.token },
+        auth: { token: data.token },
       });
+
       socketRef.current = socket;
       setupSocketListeners(socket);
-    } catch (err: unknown) {
-      let errorMessage = "Connection failed";
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      } else if (typeof err === 'string') {
-        errorMessage = err;
-      } else if (typeof err === 'object' && err !== null && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
-        errorMessage = (err as { message: string }).message;
-      }
-      logger.error("💥 Failed to connect:", err);
+    } catch (error: unknown) {
+      const appError =
+        error instanceof Error ? error : new Error("Connection failed");
+      logger.error("💥 Failed to connect:", appError);
+
       setConnectionState("disconnected");
-      setLastError(errorMessage);
+      setLastError(appError.message);
+
       setReconnectAttempts((prev) => {
         const next = prev + 1;
         handleReconnection(next);
         return next;
       });
     }
-  }, [setupSocketListeners, handleReconnection]);
+  }, [setupSocketListeners, handleReconnection, maxConnectionAttempts]);
 
   useEffect(() => {
     connectSocketFnRef.current = connectSocket;
@@ -289,6 +357,7 @@ export const useSocket = () => {
 
       setRealtimeMessages((prev) => [...prev, optimisticMessage]);
 
+      // Set fail timer
       const failTimer = setTimeout(() => {
         setRealtimeMessages((prev) =>
           prev.map((m) =>
@@ -297,7 +366,9 @@ export const useSocket = () => {
               : m
           )
         );
+        failTimersRef.current.delete(tempId);
       }, 30000);
+
       failTimersRef.current.set(tempId, failTimer);
 
       try {
@@ -306,33 +377,35 @@ export const useSocket = () => {
           content: data.content.trim(),
           tempId,
         });
-        // If emitWithAck is successful, update status to 'sent' and clear fail timer
-        setRealtimeMessages((prev) =>
-          prev.map((m) => {
-            if (m.tempId === tempId && m.status === "sending") {
-              const timer = failTimersRef.current.get(tempId);
-              if (timer) {
-                clearTimeout(timer);
-                failTimersRef.current.delete(tempId);
-              }
-              return { ...m, status: "sent" };
-            }
-            return m;
-          })
-        );
+
+        // Clear fail timer on success
+        const timer = failTimersRef.current.get(tempId);
+        if (timer) {
+          clearTimeout(timer);
+          failTimersRef.current.delete(tempId);
+        }
+
         return true;
       } catch {
-        // The handleMessageError listener will also likely be triggered by the server
+        // Server will also trigger message_error, but we handle locally too
+        const timer = failTimersRef.current.get(tempId);
+        if (timer) {
+          clearTimeout(timer);
+          failTimersRef.current.delete(tempId);
+        }
+
         setRealtimeMessages((prev) =>
           prev.map((m) =>
             m.tempId === tempId ? { ...m, status: "failed" } : m
           )
         );
+
         toast({
           title: "Message Failed",
           description: "Server did not acknowledge the message.",
           variant: "destructive",
         });
+
         return false;
       }
     },
@@ -354,48 +427,50 @@ export const useSocket = () => {
     }
   }, []);
 
-  const startTyping = useCallback(
-    (roomId: string) => {
-      if (socketRef.current?.connected) {
-        socketRef.current.emit("typing_start", { roomId });
-      }
-    },
-    []
-  );
+  const startTyping = useCallback((roomId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("typing_start", { roomId });
+    }
+  }, []);
 
-  const stopTyping = useCallback(
-    (roomId: string) => {
-      if (socketRef.current?.connected) {
-        socketRef.current.emit("typing_stop", { roomId });
-      }
-    },
-    []
-  );
-  
+  const stopTyping = useCallback((roomId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("typing_stop", { roomId });
+    }
+  }, []);
+
   const clearMessages = useCallback(() => {
     setRealtimeMessages([]);
   }, []);
 
+  const reconnect = useCallback(() => {
+    setIsShutdown(false);
+    setReconnectAttempts(0);
+    connectSocket();
+  }, [connectSocket]);
+
   /* ---------- Effects ---------- */
   useEffect(() => {
-    let isCancelled = false;
+    let isMounted = true;
+    let connectionTimer: NodeJS.Timeout;
 
     if (isAuthenticated) {
-      logger.log("Auth state is TRUE, scheduling socket connection.");
-      const timerId = setTimeout(() => {
-        if (!isCancelled) {
+      logger.log("✅ Auth state is TRUE, scheduling socket connection.");
+      connectionTimer = setTimeout(() => {
+        if (isMounted) {
           connectSocketFnRef.current?.();
         }
       }, 250);
-
-      return () => {
-        logger.log("Cleaning up scheduled socket connection.");
-        isCancelled = true;
-        clearTimeout(timerId);
-      };
     } else {
       cleanup();
     }
+
+    return () => {
+      isMounted = false;
+      if (connectionTimer) {
+        clearTimeout(connectionTimer);
+      }
+    };
   }, [isAuthenticated, cleanup]);
 
   useEffect(() => {
@@ -406,8 +481,8 @@ export const useSocket = () => {
 
   useEffect(() => {
     if (lastError) {
-      const t = setTimeout(() => setLastError(null), 10000);
-      return () => clearTimeout(t);
+      const errorTimer = setTimeout(() => setLastError(null), 10000);
+      return () => clearTimeout(errorTimer);
     }
   }, [lastError]);
 
@@ -426,5 +501,7 @@ export const useSocket = () => {
     startTyping,
     stopTyping,
     clearMessages,
+    reconnect,
+    isShutdown,
   };
 };

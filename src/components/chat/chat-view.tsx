@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { useSocketContext } from '@/context/socket-context';
 import { MessageInput } from '@/components/chat/message-input';
 import { MessageList } from '@/components/chat/message-list';
@@ -19,7 +19,7 @@ export function ChatView({ conversationId }: ChatViewProps) {
   const { user } = useAuth();
   const {
     data: { realtimeMessages, isConnected },
-    actions: { joinRoom, leaveRoom, sendMessage, startTyping, stopTyping, clearMessages },
+    actions: { joinRoom, leaveRoom, clearMessages },
   } = useSocketContext();
   
   const { historyMessages, isLoadingHistory, loadMoreHistory, hasMore } = useMessageHistory(conversationId);
