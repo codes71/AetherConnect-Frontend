@@ -9,7 +9,7 @@ import {
   useCallback,
   useRef,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { User } from "@/lib/types";
 import api from "@/api/api";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
   const userRef = useRef(user);
 
@@ -49,10 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logger.log("🔍 Loading user session...");
     setIsLoading(true);
 
-    const { success, data } = await ApiHelpers.auth.profile(
-      api.auth.getProfile(),
-      toast
-    );
+    const { success, data } = await enhancedApiCall({
+      apiCall: api.auth.getProfile(),
+      errorContext: "auth-profile-initial",
+      suppressErrorToast: true, // Silently fail on initial load
+    });
 
     if (success && data?.success) {
       setUser(data.user);
@@ -61,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
     }
     setIsLoading(false);
-  }, [toast]);
+  }, []);
 
   const logout = useCallback(
     async (options?: { suppressToast?: boolean; redirect?: boolean }) => {
@@ -110,8 +112,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    loadUser();
-  }, [loadUser]);
+    const publicPaths = ['/login', '/signup'];
+    if (publicPaths.includes(pathname)) {
+      // On login/signup, we know there's no user yet. Don't bother loading.
+      setIsLoading(false);
+      setUser(null);
+    } else {
+      // For all other paths (including '/'), check for a session.
+      loadUser();
+    }
+  }, [pathname, loadUser]);
 
   useEffect(() => {
     const handleAuthError = (title: string, description: string) => {
@@ -124,10 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const handleSessionExpired = (event: CustomEvent) => {
-      handleAuthError(
-        "Session Expired",
-        event.detail?.message || "Please log in again."
-      );
+      // Only show session expired error if a user was actually logged in.
+      if (userRef.current) {
+        handleAuthError(
+          "Session Expired",
+          event.detail?.message || "Please log in again."
+        );
+      }
     };
 
     const handleTokenReplay = (event: CustomEvent) => {

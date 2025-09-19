@@ -1,3 +1,5 @@
+"use client";
+
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -13,8 +15,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Logo } from '@/components/logo';
 import { CheckIcon } from '@/components/ui/icons';
+import { useAuth } from '@/context/auth-context';
 
 export default function LandingPage() {
+  const { isAuthenticated, user, isLoading } = useAuth();
+
   const features = [
     {
       icon: <Network className="h-8 w-8 text-primary" />,
@@ -56,14 +61,29 @@ export default function LandingPage() {
           <span className="text-xl font-bold">Aether Connect</span>
         </Link>
         <nav className="flex items-center gap-4">
-          <Button variant="ghost" asChild>
-            <Link href="/login">Log In</Link>
-          </Button>
-          <Button asChild>
-            <Link href="/signup">
-              Sign Up <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </Button>
+          {isLoading ? (
+            <div className="h-10 w-36 animate-pulse rounded-md bg-muted" />
+          ) : isAuthenticated ? (
+            <>
+              <span className="hidden text-sm font-medium sm:block">Welcome, {user?.username}!</span>
+              <Button asChild>
+                <Link href="/chat">
+                  Go to Chat <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" asChild>
+                <Link href="/login">Log In</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/signup">
+                  Sign Up <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </>
+          )}
         </nav>
       </header>
 
@@ -75,10 +95,16 @@ export default function LandingPage() {
           <p className="mt-6 max-w-2xl text-lg text-muted-foreground">
             AetherConnect is a real-time chat application built with a microservices architecture to demonstrate advanced system design, scalability, and fault tolerance.
           </p>
-          <div className="mt-8 flex gap-4">
-            <Button size="lg" asChild>
-              <Link href="/signup">Get Started</Link>
-            </Button>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            {isAuthenticated ? (
+              <Button size="lg" asChild>
+                <Link href="/chat">Open AetherConnect</Link>
+              </Button>
+            ) : (
+              <Button size="lg" asChild>
+                <Link href="/signup">Get Started</Link>
+              </Button>
+            )}
             <Button size="lg" variant="outline" asChild>
               <Link href="#features">Learn More</Link>
             </Button>
