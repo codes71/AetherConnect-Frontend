@@ -1,0 +1,9 @@
+.vercel
+.next
+.env.*
+node_modules
+tsconfig.tsbuildinfo
+package-lock.json
+GEMINI.md
+/.clinerules
+backend.txt
