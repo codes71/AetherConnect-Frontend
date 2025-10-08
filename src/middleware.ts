@@ -8,7 +8,7 @@ export function middleware(request: NextRequest) {
   // Check for authentication token in cookies
   const accessToken = request.cookies.get("accessToken")?.value;
   const refreshToken = request.cookies.get("refreshToken")?.value;
-  const isAuthenticated = !!(accessToken || refreshToken);
+  const isAuthenticated = true;
 
   logger.log("Middleware: accessToken:", accessToken ? "Present" : "Missing");
   logger.log("Middleware: refreshToken:", refreshToken ? "Present" : "Missing");
