@@ -10,6 +10,10 @@ export function middleware(request: NextRequest) {
   const refreshToken = request.cookies.get("refreshToken")?.value;
   const isAuthenticated = !!(accessToken || refreshToken);
 
+  logger.log("Middleware: accessToken:", accessToken ? "Present" : "Missing");
+  logger.log("Middleware: refreshToken:", refreshToken ? "Present" : "Missing");
+  logger.log("Middleware: isAuthenticated:", isAuthenticated, accessToken, refreshToken);
+
   const protectedPaths = ["/chat", "/profile"];
   const isProtectedPath = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path)

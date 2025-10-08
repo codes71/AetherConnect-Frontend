@@ -3,12 +3,12 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { StateCreator } from "zustand";
-import { User } from "@/lib/types";
-import { Room } from "@/lib/types";
+import { User, Room } from "@/lib/types";
 import api from "@/api/api";
 import { logger } from "@/lib/utils";
 import { enhancedApiCall } from "@/api/api-helpers";
 import { AppError, createAppError } from "@/lib/error/types";
+import { AuthState, createAuthSlice } from "./authSlice"; // Import the shared slice
 
 interface ToastOptions {
   title: string;
@@ -17,26 +17,6 @@ interface ToastOptions {
 }
 
 type ToastFn = (options: ToastOptions) => void;
-
-interface AuthSlice {
-  user: User | null;
-  isLoading: boolean;
-  isAuthenticated: boolean;
-  login: (email: string, password: string, toastFn?: ToastFn) => Promise<{ success: boolean; error?: AppError }>;
-  register: (
-    username: string,
-    firstName: string,
-    lastName: string,
-    email: string,
-    password: string,
-    toastFn?: ToastFn
-  ) => Promise<{ success: boolean; error?: AppError }>;
-  logout: (options?: { suppressToast?: boolean; redirect?: boolean; toastFn?: ToastFn; routerPush?: (path: string) => void }) => Promise<void>;
-  refreshUser: (toastFn?: ToastFn) => Promise<void>;
-  loadUser: (toastFn?: ToastFn) => Promise<void>;
-  setLoading: (loading: boolean) => void;
-  setUser: (user: User | null) => void;
-}
 
 interface RoomSlice {
   rooms: Room[];
@@ -51,133 +31,7 @@ interface SelectedRoomSlice {
   setSelectedRoomId: (id: string | null) => void;
 }
 
-type AppState = AuthSlice & RoomSlice & SelectedRoomSlice;
-
-const createAuthSlice: StateCreator<AppState, [], [], AuthSlice> = (set) => ({
-  user: null,
-  isLoading: false,
-  isAuthenticated: false,
-
-  setLoading: (loading: boolean) => set({ isLoading: loading }),
-
-  setUser: (user: User | null) => set({ 
-    user, 
-    isAuthenticated: !!user 
-  }),
-
-  loadUser: async (toastFn?: ToastFn) => {
-    logger.log("🔍 Loading user session...");
-    set({ isLoading: true });
-
-    const { success, data } = await enhancedApiCall({
-      apiCall: api.auth.getProfile(),
-      errorContext: "auth-profile-initial",
-      toast: toastFn, // Pass toastFn
-      // suppressErrorToast is removed
-    });
-
-    if (success && data?.success) {
-      set({ user: data.user, isAuthenticated: true });
-      logger.log("✅ User session loaded successfully");
-    } else {
-      set({ user: null, isAuthenticated: false });
-    }
-    set({ isLoading: false });
-  },
-
-  logout: async (options?: { suppressToast?: boolean; redirect?: boolean; toastFn?: ToastFn; routerPush?: (path: string) => void }) => {
-    const { suppressToast = false, redirect = true, toastFn, routerPush } = options || {};
-
-    try {
-      const { success } = await enhancedApiCall({
-        apiCall: api.auth.logout(),
-        errorContext: "auth-logout",
-        toast: toastFn, // Pass toastFn
-        // suppressErrorToast is removed
-      });
-
-      if (success && !suppressToast && toastFn) {
-        toastFn({
-          title: "Logged out",
-          description: "You have been logged out successfully.",
-        });
-      }
-    } catch (error) {
-      logger.warn("Logout API call failed, but proceeding with local cleanup", error);
-    } finally {
-      set({ user: null, isAuthenticated: false, isLoading: false });
-      if (redirect && routerPush) {
-        routerPush("/login");
-      }
-    }
-  },
-
-  refreshUser: async (toastFn?: ToastFn) => {
-    logger.log("🔄 Refreshing user data...");
-    const { success, data } = await enhancedApiCall({
-      apiCall: api.auth.getProfile(),
-      errorContext: "auth-refresh-profile",
-      toast: toastFn, // Pass toastFn
-      // suppressErrorToast is removed
-    });
-
-    if (success && data?.success) {
-      set({ user: data.user, isAuthenticated: true });
-    }
-  },
-
-  login: async (email: string, password: string, toastFn?: ToastFn): Promise<{ success: boolean; error?: AppError }> => {
-    set({ isLoading: true });
-    try {
-      const { success, data, error } = await enhancedApiCall({
-        apiCall: api.auth.login({ email, password }),
-        toast: toastFn,
-        errorContext: "auth-login",
-      });
-
-      if (success && data?.success) {
-        set({ user: data.user, isAuthenticated: true });
-        logger.log("✅ Login successful");
-        return { success: true };
-      }
-      return { success: false, error };
-    } catch (error) {
-      logger.error("Login failed:", error);
-      return { success: false, error: createAppError("UNKNOWN", "LOGIN_FAILED", "An unexpected error occurred during login.") };
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  register: async (
-    username: string,
-    firstName: string,
-    lastName: string,
-    email: string,
-    password: string,
-    toastFn?: ToastFn
-  ): Promise<{ success: boolean; error?: AppError }> => {
-    set({ isLoading: true });
-    try {
-      const { success, data, error } = await enhancedApiCall({
-        apiCall: api.auth.register({ username, firstName, lastName, email, password }),
-        toast: toastFn,
-        errorContext: "auth-register",
-      });
-
-      if (success && data?.success) {
-        set({ user: data.user, isAuthenticated: true });
-        return { success: true };
-      }
-      return { success: false, error };
-    } catch (error) {
-      logger.error("Registration failed:", error);
-      return { success: false, error: createAppError("UNKNOWN", "REGISTRATION_FAILED", "An unexpected error occurred during registration.") };
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-});
+type AppState = AuthState & RoomSlice & SelectedRoomSlice; // Use AuthState from authSlice
 
 const createRoomSlice: StateCreator<AppState, [], [], RoomSlice> = (set, get) => ({
   rooms: [],
@@ -195,8 +49,7 @@ const createRoomSlice: StateCreator<AppState, [], [], RoomSlice> = (set, get) =>
       const { success, data } = await enhancedApiCall<{ rooms: Room[] }>({
         apiCall: api.message.getRooms(),
         errorContext: 'rooms-fetch',
-        toast: toastFn, // Pass toastFn
-        // suppressErrorToast is removed
+        toast: toastFn,
       });
 
       if (success && data && Array.isArray(data.rooms)) {
