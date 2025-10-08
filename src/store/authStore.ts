@@ -163,6 +163,8 @@ const createAuthSlice: StateCreator<AuthState, [], [], AuthState> = (set) => ({
         logger.log("✅ Login successful");
         logger.log("AuthStore isAuthenticated:", true);
         logger.log("AuthStore user:", data.user);
+        // Log cookies available to client-side JavaScript after successful login
+        logger.log("Client-side document.cookie after login:", document.cookie);
         return { success: true };
       }
       return { success: false, error };
