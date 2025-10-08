@@ -5,6 +5,6 @@ node_modules
 tsconfig.tsbuildinfo
 package-lock.json
 GEMINI.md
-/.clinerules
 backend.txt
+/.clinerules
 /docs
