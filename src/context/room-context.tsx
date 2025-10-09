@@ -9,11 +9,10 @@ import {
   useCallback,
   useRef,
 } from "react";
-import api from "@/api/api";
+import { useAuth } from "@/context/auth-context";
 import { Room } from "@/lib/types";
-import useAuthStore from "@/store/authStore";
-import { enhancedApiCall } from "@/api/api-helpers";
-import { useToast } from "@/hooks/use-toast"; // Import useToast
+import { useToast } from "@/hooks/use-toast";
+import { getRooms } from "@/lib/api";
 
 interface RoomContextType {
   rooms: Room[];
@@ -25,8 +24,7 @@ interface RoomContextType {
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
 
 export function RoomProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuthStore();
-  const { toast } = useToast(); // Initialize useToast
+  const { user } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const roomsRef = useRef(rooms);
   roomsRef.current = rooms;
@@ -41,27 +39,21 @@ export function RoomProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true);
     try {
-      const { success, data } = await enhancedApiCall<{ rooms: Room[] }>({
-        apiCall: api.message.getRooms(),
-        errorContext: 'rooms-fetch',
-        toast: toast, // Pass the toast function
-        // suppressErrorToast is removed to allow toasts for all errors
-      });
+      const response = await getRooms();
 
-      if (success && data && Array.isArray(data.rooms)) {
-        setRooms(data.rooms);
+      if (response.success && response.rooms) {
+        setRooms(response.rooms);
       } else {
-        console.warn("API response for rooms did not contain a 'rooms' array:", data);
+        console.error("Failed to fetch rooms:", response.message);
         setRooms([]);
       }
     } catch (error) {
       console.error("Failed to fetch rooms:", error);
       setRooms([]);
-      // Manual toast call removed, enhancedApiCall will handle it
     } finally {
       setIsLoading(false);
     }
-  }, [user, toast]);
+  }, [user]);
 
   const refreshRooms = useCallback(async () => {
     await fetchRooms();
@@ -82,11 +74,7 @@ export function RoomProvider({ children }: { children: ReactNode }) {
     refreshRooms,
   };
 
-  return (
-    <RoomContext.Provider value={value}>
-      {children}
-    </RoomContext.Provider>
-  );
+  return <RoomContext.Provider value={value}>{children}</RoomContext.Provider>;
 }
 
 export function useRooms() {

@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import useAuthStore from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useEffect } from "react"; // Import useEffect
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/auth-context"; // Import useAuth hook
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -21,10 +21,13 @@ const loginSchema = z.object({
 type LoginData = z.infer<typeof loginSchema>;
 
 export function AuthLoginForm() {
-  const { login, isLoading } = useAuthStore();
+  const { login, isLoading } = useAuth(); // Removed isAuthenticated
   const { toast } = useToast();
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  // Removed local error state as we will use toast for feedback
+
+  // Removed useEffect for isAuthenticated redirect, as middleware handles this.
+
   const {
     register,
     handleSubmit,
@@ -34,17 +37,30 @@ export function AuthLoginForm() {
   });
 
   const onSubmit = async (data: LoginData) => {
-    setError(null);
-    const { success, error: authError } = await login(data.email, data.password, toast);
-    console.log('Login success:', success);
-    console.log('Auth state after login:', useAuthStore.getState());
-    if (success) {
-      console.log("Redirecting to /chat");
+    const result = await login(data); // Call login from context
+    console.log('Login result:', result);
+
+    if (result.success) {
+      toast({
+        title: "Login Successful",
+        description: "Welcome back!",
+      });
+      // No manual redirect here, the middleware will handle redirecting authenticated users from /login
+      // to /chat if they try to access /login after successful login.
+      // However, for a smoother UX, we can still push to /chat here.
       router.push("/chat");
     } else {
-      setError(authError?.message || "An unexpected error occurred. Please try again.");
+      toast({
+        title: "Login Failed",
+        description: result.message,
+        variant: "destructive",
+      });
     }
   };
+
+  // Removed the conditional rendering based on isLoading or isAuthenticated.
+  // The middleware will handle preventing access to /login if already authenticated.
+  // Components that use useAuth will handle their own loading states.
 
   return (
     <>
@@ -87,11 +103,11 @@ export function AuthLoginForm() {
             </p>
           )}
         </div>
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {/* Removed local error display, relying on toast */}
         <Button
           type="submit"
           className="w-full"
-          disabled={isSubmitting || isLoading}
+          disabled={isSubmitting || isLoading} // Use isLoading from useAuth
         >
           {isSubmitting || isLoading ? "Logging in..." : "Login"}
         </Button>

@@ -3,16 +3,16 @@ import type { NextRequest } from "next/server";
 import { logger } from "./lib/utils";
 export function middleware(request: NextRequest) {
   // Log all cookies for debugging purposes in remote environments
-  logger.log("Middleware: All cookies received:", request.cookies.getAll());
+  // logger.log("Middleware: All cookies received:", request.cookies.getAll());
 
   // Check for authentication token in cookies
   const accessToken = request.cookies.get("accessToken")?.value;
   const refreshToken = request.cookies.get("refreshToken")?.value;
-  const isAuthenticated = true;
+  const isAuthenticated = !!(accessToken || refreshToken);
 
   logger.log("Middleware: accessToken:", accessToken ? "Present" : "Missing");
   logger.log("Middleware: refreshToken:", refreshToken ? "Present" : "Missing");
-  logger.log("Middleware: isAuthenticated:", isAuthenticated, accessToken, refreshToken);
+  logger.log("Middleware: isAuthenticated:", isAuthenticated);
 
   const protectedPaths = ["/chat", "/profile"];
   const isProtectedPath = protectedPaths.some((path) =>

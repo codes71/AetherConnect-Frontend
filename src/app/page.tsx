@@ -15,10 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
 import { CheckIcon } from "@/components/ui/icons";
-import useAuthStore from "@/store/authStore";
+import { useAuth } from "@/context/auth-context";
 
 export default function LandingPage() {
-  const { isAuthenticated, user, isLoading } = useAuthStore();
+  const { user, isLoading } = useAuth(); // Removed isAuthenticated
 
   const features = [
     {
@@ -69,7 +69,7 @@ export default function LandingPage() {
         <nav className="flex items-center gap-4">
           {isLoading ? (
             <div className="h-10 w-36 animate-pulse rounded-md bg-muted" />
-          ) : isAuthenticated ? (
+          ) : user ? ( // Check for user instead of isAuthenticated
             <>
               <span className="hidden text-sm font-medium sm:block">
                 Welcome, {user?.username}!
@@ -106,7 +106,7 @@ export default function LandingPage() {
             scalability, and fault tolerance.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            {isAuthenticated ? (
+            {user ? ( // Check for user instead of isAuthenticated
               <Button size="lg" asChild>
                 <Link href="/chat">Open AetherConnect</Link>
               </Button>

@@ -5,7 +5,7 @@ import { useSocketContext } from '@/context/socket-context';
 import { MessageInput } from '@/components/chat/message-input';
 import { MessageList } from '@/components/chat/message-list';
 import { Message } from '@/lib/types';
-import useAuthStore from '@/store/authStore';
+import { useAuth } from '@/context/auth-context';
 import { Room } from '@/lib/types';
 import { ChatHeader } from './chat-header';
 import { useMessageHistory } from '@/hooks/use-message-history';
@@ -16,7 +16,7 @@ interface ChatViewProps {
 }
 
 export function ChatView({ conversationId }: ChatViewProps) {
-  const { user } = useAuthStore();
+  const { user } = useAuth();
   const {
     data: { realtimeMessages, isConnected },
     actions: { joinRoom, leaveRoom, clearMessages },

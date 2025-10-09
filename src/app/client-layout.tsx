@@ -2,38 +2,23 @@
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
-import useAuthStore from "@/store/authStore";
+import { useAuth } from "@/context/auth-context"; // Import useAuth hook
 import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
-  const loadUser = useAuthStore((state) => state.loadUser);
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
+  const { logout, isLoading } = useAuth();
 
+  // Effect to handle session expiration and token replay security alerts
   useEffect(() => {
-    const publicPaths = ["/login", "/signup"];
-    if (publicPaths.includes(pathname)) {
-      useAuthStore.setState({ isLoading: false });
-    } else {
-      loadUser(toast); // Pass the toast function
-    }
-  }, [pathname, loadUser, toast]);
+    if (isLoading) return; // Don't set up event listeners while loading
 
-  useEffect(() => {
-    const { isAuthenticated } = useAuthStore.getState();
-    const publicPaths = ["/login", "/signup"];
-    if (isAuthenticated && publicPaths.includes(pathname)) {
-      router.push("/chat");
-    }
-  }, [pathname, router]); // isAuthenticated is accessed via getState, so it's not a direct dependency
-
-  useEffect(() => {
     const handleAuthError = (title: string, description: string) => {
-      const { logout } = useAuthStore.getState();
       logout({
         suppressToast: true,
         redirect: false,
@@ -50,13 +35,12 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
     };
 
     const handleSessionExpired = (event: CustomEvent) => {
-      const user = useAuthStore.getState().user;
-      if (user) {
-        handleAuthError(
-          "Session Expired",
-          event.detail?.message || "Please log in again."
-        );
-      }
+      // The middleware and AuthProvider's checkAuthStatus should handle redirects.
+      // This client-side event listener is for displaying a toast on session expiration.
+      handleAuthError(
+        "Session Expired",
+        event.detail?.message || "Please log in again."
+      );
     };
 
     const handleTokenReplay = (event: CustomEvent) => {
@@ -86,16 +70,15 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
         handleTokenReplay as EventListener
       );
     };
-  }, [toast, router]);
+  }, [toast, router, logout, isLoading]); // Removed isAuthenticated from dependencies
+
+  // No explicit loading state return here, as middleware handles initial route protection.
+  // The AuthProvider's isLoading state will manage rendering within components that use useAuth.
 
   return (
-    <html lang="en">
-      <body>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-          <Toaster />
-        </ThemeProvider>
-      </body>
-    </html>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      {children}
+      <Toaster />
+    </ThemeProvider>
   );
 }

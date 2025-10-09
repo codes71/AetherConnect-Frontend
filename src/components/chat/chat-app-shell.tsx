@@ -37,15 +37,14 @@ import {
 import { useRooms } from '@/context/room-context';
 import { useRouter } from 'next/navigation';
 import { useSelectedRoom } from '@/context/selected-room-context';
-
-import useAuthStore from '@/store/authStore';
+import { useAuth } from '@/context/auth-context';
 export function ChatAppShell({
   children,
 }: {
   children: ReactNode;
 }) {
   const { isMobile } = useSidebar();
-  const { user, logout, isLoading: isAuthLoading } = useAuthStore();
+  const { user, logout, isLoading: isAuthLoading } = useAuth();
   const { rooms, isLoading: areRoomsLoading } = useRooms();
   const { selectedRoomId, setSelectedRoomId } = useSelectedRoom();
   const router = useRouter();

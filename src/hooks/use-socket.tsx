@@ -3,12 +3,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { Message } from "@/lib/types";
-import  useAuthStore from '@/store/authStore';
-
+import { useAuth } from '@/context/auth-context';
 import { useToast } from "@/hooks/use-toast";
 import { logger } from "@/lib/utils";
-import api from "@/api/api";
-import { enhancedApiCall } from "@/api/api-helpers";
+import { getWsToken } from "@/lib/api";
 
 type SendMessageData = {
   roomId: string;
@@ -24,7 +22,7 @@ interface SocketError extends Error {
 }
 
 export const useSocket = () => {
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
 
   const socketRef = useRef<Socket | null>(null);
@@ -261,22 +259,11 @@ export const useSocket = () => {
     try {
       logger.log("🔌 Attempting to connect socket...");
 
-      const { success, data, error } = await enhancedApiCall({
-        apiCall: api.auth.getWsToken(),
-        errorContext: "socket-connection",
-        toast: toast, // Pass the toast function
-        // suppressErrorToast is removed to allow toasts for all errors
-      });
+      // Get WebSocket token for authentication
+      const tokenResponse = await getWsToken();
 
-      if (!success || !data?.token) {
-        // If enhancedApiCall already showed a toast, we don't need to throw a generic error.
-        // We can just return and let the error handling in enhancedApiCall take care of it.
-        // However, if there's no error object, we still need a fallback.
-        if (error) {
-          throw error;
-        } else {
-          throw new Error("Failed to get WebSocket token");
-        }
+      if (!tokenResponse.success || !tokenResponse.token) {
+        throw new Error(tokenResponse.message || "Failed to get WebSocket token");
       }
 
       // Cleanup existing socket
@@ -285,13 +272,13 @@ export const useSocket = () => {
         socketRef.current = null;
       }
 
-      const socket = io(process.env.NEXT_PUBLIC_WSS_URL!, {
+      const socket = io(process.env.NEXT_PUBLIC_WSS_URL || "ws://localhost:3001", {
         path: "/socket/",
         transports: ["websocket"],
         timeout: 10000,
         forceNew: true,
         reconnection: false,
-        auth: { token: data.token },
+        auth: { token: tokenResponse.token },
       });
 
       socketRef.current = socket;

@@ -15,8 +15,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Logo } from '@/components/logo';
-import useAuthStore from '@/store/authStore';
-import { useState, useEffect } from 'react';
+import { useAuth } from '@/context/auth-context'; // Use the main AuthContext
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 const signupSchema = z.object({
@@ -30,7 +30,7 @@ const signupSchema = z.object({
 type SignupData = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
-  const { register: registerUser, isAuthenticated } = useAuthStore();
+  const { register: authRegister } = useAuth(); // Renamed to avoid conflict with react-hook-form's register
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const {
@@ -44,22 +44,21 @@ export default function SignupPage() {
   const onSubmit = async (data: SignupData) => {
     setError(null);
     try {
-      const success = await registerUser(data.username, data.firstName, data.lastName, data.email, data.password);
-      if (success) {
-        router.push('/chat');
+      const result = await authRegister(data); // Pass the entire data object
+      if (result.success) {
+        // On successful registration, the user should be prompted to log in.
+        // The middleware will handle redirection if they try to access protected routes.
+        router.push('/login?registered=true'); // Redirect to login with a flag
       } else {
-        setError('Failed to create an account. Please try again.');
+        setError(result.message || 'Failed to create an account. Please try again.');
       }
-    } catch {
-      setError('An unexpected error occurred. Please try again.');
+    } catch (e: any) {
+      setError(e.message || 'An unexpected error occurred. Please try again.');
     }
   };
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      router.push('/chat');
-    }
-  }, [isAuthenticated, router]);
+  // Removed useEffect for isAuthenticated redirect, as middleware handles this.
+  // The AuthProvider will also handle loading user from localStorage and verifying.
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-secondary">

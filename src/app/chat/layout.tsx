@@ -7,21 +7,23 @@ import { ChatAppShell } from '@/components/chat/chat-app-shell';
 import { SelectedRoomProvider } from '@/context/selected-room-context';
 import { RoomProvider } from '@/context/room-context';
 import { SocketProvider } from '@/context/socket-context';
+import { AuthProvider } from '@/context/auth-context';
 
 
 export default function ChatLayout({ children }: { children: ReactNode }) {
   return (
-    <RoomProvider>
-      <SocketProvider>
-        <ThemeProvider defaultTheme="system" enableSystem>
-          <SidebarProvider>
-            <SelectedRoomProvider>
-              <ChatAppShell>{children}</ChatAppShell>
-            </SelectedRoomProvider>
-          </SidebarProvider>
-        </ThemeProvider>
-      </SocketProvider>
-    </RoomProvider>
+    <AuthProvider>
+      <RoomProvider>
+        <SocketProvider>
+          <ThemeProvider defaultTheme="system" enableSystem>
+            <SidebarProvider>
+              <SelectedRoomProvider>
+                <ChatAppShell>{children}</ChatAppShell>
+              </SelectedRoomProvider>
+            </SidebarProvider>
+          </ThemeProvider>
+        </SocketProvider>
+      </RoomProvider>
+    </AuthProvider>
   );
 }
-

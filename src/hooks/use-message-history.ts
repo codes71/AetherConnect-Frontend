@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Message } from "@/lib/types";
-import api from "@/api/api";
-import { enhancedApiCall } from "@/api/api-helpers";
+import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { getMessageHistory } from "@/lib/api";
 
 const MESSAGE_LIMIT = 20;
 
@@ -19,24 +19,34 @@ export const useMessageHistory = (roomId: string) => {
   const fetchHistory = useCallback(
     async (currentPage: number, currentRoomId: string) => {
       if (!currentRoomId) return;
-      
+
       setIsLoadingHistory(true);
       try {
-        const { success, data } = await enhancedApiCall<{ messages: Message[] }>({
-          apiCall: api.message.getMessages(currentRoomId, currentPage, MESSAGE_LIMIT),
-          errorContext: `messages-history-${currentRoomId}`,
-          toast: toast, // Pass the toast function
-          // suppressErrorToast is removed to allow toasts for all errors
-        });
+        const response = await getMessageHistory(currentRoomId, currentPage, MESSAGE_LIMIT);
 
-        if (success && data && Array.isArray(data.messages)) {
-          const newMessages = data.messages;
+        if (response.success && response.messages) {
+          // Transform API messages to match our Message type
+          const transformedMessages: Message[] = response.messages.map((msg: any) => ({
+            id: msg.id,
+            content: msg.content,
+            createdAt: msg.createdAt,
+            userId: msg.userId,
+            username: msg.username,
+            roomId: msg.roomId,
+            messageType: msg.messageType || 'text',
+            status: 'sent' as const,
+          }));
+
           setHistoryMessages((prev) =>
-            currentPage === 1 ? newMessages : [...prev, ...newMessages]
+            currentPage === 1 ? transformedMessages : [...prev, ...transformedMessages]
           );
-          setHasMore(newMessages.length === MESSAGE_LIMIT);
+
+          // Check if there are more pages
+          const hasMorePages = response.pagination ?
+            (response.pagination.hasNext || currentPage < response.pagination.totalPages) : false;
+          setHasMore(hasMorePages);
         } else {
-          console.warn("API response for messages did not contain a 'messages' array:", data);
+          console.error("Failed to fetch message history:", response.message);
           if (currentPage === 1) {
             setHistoryMessages([]);
           }
@@ -48,12 +58,11 @@ export const useMessageHistory = (roomId: string) => {
           setHistoryMessages([]);
         }
         setHasMore(false);
-        // Manual toast call removed, enhancedApiCall will handle it
       } finally {
         setIsLoadingHistory(false);
       }
     },
-    [toast]
+    []
   );
 
   // Load initial messages only once per room
