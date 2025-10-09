@@ -52,8 +52,9 @@ export default function SignupPage() {
       } else {
         setError(result.message || 'Failed to create an account. Please try again.');
       }
-    } catch (e: any) {
-      setError(e.message || 'An unexpected error occurred. Please try again.');
+    } catch (e: unknown) {
+      const errorMessage = (e instanceof Error) ? e.message : 'An unexpected error occurred. Please try again.';
+      setError(errorMessage);
     }
   };
 

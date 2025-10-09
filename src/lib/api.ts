@@ -1,19 +1,20 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios'; // Import AxiosError for better typing
 
-// Define the base URL for the API Gateway
-const API_BASE_URL = 'http://localhost:3000/api/auth'; // As per backend.txt, API Gateway is on port 3000
-const API_ROOMS_BASE_URL = 'http://localhost:3000/api'; // Rooms endpoint is not under /auth
+const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3000'; // Added default for dev
 
-// Axios instance to handle cookies automatically
+const API_AUTH_BASE_URL = `${API_GATEWAY_URL}/api/auth`;
+const API_ROOMS_BASE_URL = `${API_GATEWAY_URL}/api`;
+
+// Axios instance for authentication endpoints
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_AUTH_BASE_URL,
   withCredentials: true, // This is crucial for sending cookies with requests
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Axios instance for rooms endpoints (different base URL)
+// Axios instance for rooms endpoints
 const roomsApiClient = axios.create({
   baseURL: API_ROOMS_BASE_URL,
   withCredentials: true, // This is crucial for sending cookies with requests
@@ -109,7 +110,7 @@ interface RoomsResponse {
 interface MessageHistoryResponse {
   success: boolean;
   message: string;
-  messages?: any[]; // Messages might be undefined on failure
+  messages?: unknown[]; // Use unknown[] instead of any[]
   pagination?: {
     currentPage: number;
     totalPages: number;
@@ -120,6 +121,14 @@ interface MessageHistoryResponse {
   };
 }
 
+// Helper function to extract error message from AxiosError
+const getAxiosErrorMessage = (error: unknown): string => {
+  if (axios.isAxiosError(error)) {
+    return error.response?.data?.message || error.message;
+  }
+  return (error instanceof Error) ? error.message : 'An unexpected error occurred.';
+};
+
 // --- API Functions ---
 
 export const registerUser = async (userData: RegisterData): Promise<RegisterResponse> => {
@@ -128,11 +137,8 @@ export const registerUser = async (userData: RegisterData): Promise<RegisterResp
     return response.data;
   } catch (error: unknown) {
     console.error('Registration API error:', error);
-    // Log more detailed error information from the response
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred during registration.';
-    console.error('Detailed error response:', axiosError.response?.data);
-    // Return a structure that matches RegisterResponse but indicates failure
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     return { success: false, message: errorMessage };
   }
 };
@@ -143,11 +149,8 @@ export const loginUser = async (credentials: LoginCredentials): Promise<LoginRes
     return response.data;
   } catch (error: unknown) {
     console.error('Login API error:', error);
-    // Log more detailed error information from the response
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred during login.';
-    console.error('Detailed error response:', axiosError.response?.data);
-    // Return a structure that matches LoginResponse but indicates failure
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     return { success: false, message: errorMessage };
   }
 };
@@ -158,10 +161,8 @@ export const refreshAccessToken = async (): Promise<RefreshResponse> => {
     return response.data;
   } catch (error: unknown) {
     console.error('Refresh token API error:', error);
-    // Log more detailed error information from the response
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred during token refresh.';
-    console.error('Detailed error response:', axiosError.response?.data);
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     return { success: false, message: errorMessage };
   }
 };
@@ -176,9 +177,8 @@ export const logoutUser = async (): Promise<LogoutResponse> => {
     return response.data;
   } catch (error: unknown) {
     console.error('Logout API error:', error);
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred during logout.';
-    console.error('Detailed error response:', axiosError.response?.data);
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     // Even on error, attempt to clear client-side cookies and rely on backend for HTTP-only
     clearAuthCookies();
     return { success: false, message: errorMessage };
@@ -219,11 +219,8 @@ export const getUserProfile = async (): Promise<UserProfileResponse> => {
     return response.data;
   } catch (error: unknown) {
     console.error('Get user profile API error:', error);
-    // Log more detailed error information from the response
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred while fetching user profile.';
-    console.error('Detailed error response:', axiosError.response?.data);
-    // Return a structure that matches UserProfileResponse but indicates failure
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     return { success: false, message: errorMessage };
   }
 };
@@ -234,10 +231,8 @@ export const getWsToken = async (): Promise<WsTokenResponse> => {
     return response.data;
   } catch (error: unknown) {
     console.error('Get WebSocket token API error:', error);
-    // Log more detailed error information from the response
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred while fetching WebSocket token.';
-    console.error('Detailed error response:', axiosError.response?.data);
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     return { success: false, message: errorMessage };
   }
 };
@@ -248,10 +243,8 @@ export const getRooms = async (): Promise<RoomsResponse> => {
     return response.data;
   } catch (error: unknown) {
     console.error('Get rooms API error:', error);
-    // Log more detailed error information from the response
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred while fetching rooms.';
-    console.error('Detailed error response:', axiosError.response?.data);
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     return { success: false, message: errorMessage };
   }
 };
@@ -264,10 +257,8 @@ export const getMessageHistory = async (roomId: string, page: number = 1, limit:
     return response.data;
   } catch (error: unknown) {
     console.error('Get message history API error:', error);
-    // Log more detailed error information from the response
-    const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
-    const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred while fetching message history.';
-    console.error('Detailed error response:', axiosError.response?.data);
+    const errorMessage = getAxiosErrorMessage(error);
+    console.error('Detailed error response:', (error as AxiosError).response?.data);
     return { success: false, message: errorMessage };
   }
 };

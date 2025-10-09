@@ -2,9 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Message } from "@/lib/types";
-import { useAuth } from "@/context/auth-context";
-import { useToast } from "@/hooks/use-toast";
+// Removed unused imports: useAuth, useToast
 import { getMessageHistory } from "@/lib/api";
+
+// Define interface for raw message objects from the API
+interface RawApiMessage {
+  id: string;
+  content: string;
+  createdAt: string;
+  userId: string;
+  username: string;
+  roomId: string;
+  messageType?: 'text' | 'image' | 'file'; // Assuming these are the possible types
+  // Add any other properties that might come from the API if needed
+}
 
 const MESSAGE_LIMIT = 20;
 
@@ -14,7 +25,7 @@ export const useMessageHistory = (roomId: string) => {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [hasLoadedInitial, setHasLoadedInitial] = useState(false);
-  const { toast } = useToast();
+  // Removed unused variable: toast
 
   const fetchHistory = useCallback(
     async (currentPage: number, currentRoomId: string) => {
@@ -25,8 +36,10 @@ export const useMessageHistory = (roomId: string) => {
         const response = await getMessageHistory(currentRoomId, currentPage, MESSAGE_LIMIT);
 
         if (response.success && response.messages) {
+          // Explicitly cast response.messages to RawApiMessage[]
+          const rawMessages = response.messages as RawApiMessage[];
           // Transform API messages to match our Message type
-          const transformedMessages: Message[] = response.messages.map((msg: any) => ({
+          const transformedMessages: Message[] = rawMessages.map((msg: RawApiMessage) => ({
             id: msg.id,
             content: msg.content,
             createdAt: msg.createdAt,
