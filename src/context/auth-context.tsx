@@ -150,14 +150,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (profileResponse.success && profileResponse.user && profileResponse.user.id) {
         setUser(profileResponse.user);
         saveUserToLocalStorage(profileResponse.user);
-        clearAuthCookies(); // Immediately remove secure cookies after storing profile
+        // Removed clearAuthCookies() here. Middleware and AuthProvider's checkAuthStatus
+        // will rely on HTTP-only cookies for session validation.
+        // Client-side cookies are not explicitly stored, and HTTP-only cookies
+        // are managed by the backend.
         return { success: true, message: "Login successful", user: profileResponse.user };
       } else {
         // If login was successful but profile fetch failed
         console.error("Login successful, but failed to fetch user profile.");
         removeUserFromLocalStorage();
         setUser(null);
-        clearAuthCookies();
+        clearAuthCookies(); // Clear client-side cookies if profile fetch fails
         return { success: false, message: "Login successful, but failed to retrieve user profile." };
       }
     }

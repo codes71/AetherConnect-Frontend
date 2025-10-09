@@ -48,18 +48,14 @@ export function ChatAppShell({
   const { rooms, isLoading: areRoomsLoading } = useRooms();
   const { selectedRoomId, setSelectedRoomId } = useSelectedRoom();
   const router = useRouter();
-
+  
   if (isAuthLoading || areRoomsLoading) {
     return <div>Loading...</div>;
   }
+  
+  const name = user?.username;
 
-  if (!user) {
-    // You can render a login button or a redirect here
-    return <div>Please log in to continue.</div>;
-  }
-
-  const name = user.username;
-  const initials = name.substring(0, 2).toUpperCase();
+  const initials = name?.substring(0, 2).toUpperCase();
 
   return (
     <>
@@ -144,7 +140,7 @@ export function ChatAppShell({
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">{name}</p>
                     <p className="text-xs leading-none text-muted-foreground">
-                      {user.email}
+                      {user?.email}
                     </p>
                   </div>
                 </DropdownMenuLabel>

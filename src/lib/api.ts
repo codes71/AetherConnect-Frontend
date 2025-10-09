@@ -169,31 +169,34 @@ export const refreshAccessToken = async (): Promise<RefreshResponse> => {
 export const logoutUser = async (): Promise<LogoutResponse> => {
   try {
     const response = await apiClient.post<LogoutResponse>('/logout');
-    // Clear cookies manually as a fallback (in case backend doesn't clear them)
+    // IMPORTANT: The backend's /logout endpoint MUST invalidate HTTP-only cookies
+    // by sending Set-Cookie headers with expired dates.
+    // The client-side clearAuthCookies is primarily for non-HTTP-only cookies or as a fallback.
     clearAuthCookies();
     return response.data;
   } catch (error: unknown) {
     console.error('Logout API error:', error);
-    // Log more detailed error information from the response
     const axiosError = error as { response?: { data?: { message?: string } }; message?: string };
     const errorMessage = axiosError.response?.data?.message || axiosError.message || 'An unexpected error occurred during logout.';
     console.error('Detailed error response:', axiosError.response?.data);
-    // Clear cookies manually as a fallback when backend is unavailable
+    // Even on error, attempt to clear client-side cookies and rely on backend for HTTP-only
     clearAuthCookies();
     return { success: false, message: errorMessage };
   }
 };
 
 export const clearAuthCookies = () => {
-  // Clear cookies manually by setting them to expire immediately
+  // This function attempts to clear cookies client-side.
+  // IMPORTANT: This is ineffective for HTTP-only cookies.
+  // For HTTP-only cookies, the backend must send 'Set-Cookie' headers with expired dates.
   document.cookie = 'accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
   document.cookie = 'refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 
-  // Also clear any other potential auth-related cookies
   document.cookie = 'accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' + window.location.hostname + ';';
   document.cookie = 'refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' + window.location.hostname + ';';
 
-  console.log('🔒 Auth cookies cleared manually');
+  console.log('🔒 Auth cookies cleared manually (Note: Ineffective for HTTP-only cookies)');
+  console.warn('Backend /logout endpoint must invalidate HTTP-only cookies for full logout.');
 };
 
 export const forceLogout = () => {
