@@ -1,14 +1,36 @@
-import axios, { AxiosError } from 'axios'; // Import AxiosError for better typing
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'; // Import AxiosError for better typing
+import { logger } from './utils';
 
-const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:3000'; // Added default for dev
+const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_URL; // Added default for dev  
 
-const API_AUTH_BASE_URL = `${API_GATEWAY_URL}/api/auth`;
-const API_ROOMS_BASE_URL = `${API_GATEWAY_URL}/api`;
+logger.info('Using API_GATEWAY_URL:', API_GATEWAY_URL);
+
+const API_AUTH_BASE_URL = `${API_GATEWAY_URL}/auth`;
+const API_ROOMS_BASE_URL = `${API_GATEWAY_URL}/`;
+
+// Helper functions for JWT token management
+const getAccessToken = (): string | null => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('accessToken');
+  }
+  return null;
+};
+
+const setAccessToken = (token: string) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('accessToken', token);
+  }
+};
+
+const clearAccessToken = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('accessToken');
+  }
+};
 
 // Axios instance for authentication endpoints
 const apiClient = axios.create({
   baseURL: API_AUTH_BASE_URL,
-  withCredentials: true, // This is crucial for sending cookies with requests
   headers: {
     'Content-Type': 'application/json',
   },
@@ -17,11 +39,22 @@ const apiClient = axios.create({
 // Axios instance for rooms endpoints
 const roomsApiClient = axios.create({
   baseURL: API_ROOMS_BASE_URL,
-  withCredentials: true, // This is crucial for sending cookies with requests
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Request interceptor to add JWT token to headers
+const authInterceptor = (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+};
+
+apiClient.interceptors.request.use(authInterceptor);
+roomsApiClient.interceptors.request.use(authInterceptor);
 
 // --- Interfaces ---
 
@@ -54,24 +87,22 @@ interface RegisterData {
 }
 
 // Specific response interfaces based on backend.txt
+// Specific response interfaces based on backend.txt
 interface RegisterResponse {
   success: boolean;
   message: string;
-  user?: User; // User might be undefined on failure
+  user?: User;
+  accessToken?: string;
 }
 
 interface LoginResponse {
   success: boolean;
   message: string;
-  user?: User; // User might be undefined on failure
-  accessToken?: string; // Might be undefined on failure
-  refreshToken?: string; // Might be undefined on failure
+  user?: User;
+  accessToken?: string;
 }
 
-interface RefreshResponse {
-  success: boolean;
-  message: string;
-}
+
 
 interface LogoutResponse {
   success: boolean;
@@ -134,6 +165,9 @@ const getAxiosErrorMessage = (error: unknown): string => {
 export const registerUser = async (userData: RegisterData): Promise<RegisterResponse> => {
   try {
     const response = await apiClient.post<RegisterResponse>('/register', userData);
+    if (response.data.success && response.data.accessToken) {
+      setAccessToken(response.data.accessToken);
+    }
     return response.data;
   } catch (error: unknown) {
     console.error('Registration API error:', error);
@@ -146,6 +180,9 @@ export const registerUser = async (userData: RegisterData): Promise<RegisterResp
 export const loginUser = async (credentials: LoginCredentials): Promise<LoginResponse> => {
   try {
     const response = await apiClient.post<LoginResponse>('/login', credentials);
+    if (response.data.success && response.data.accessToken) {
+      setAccessToken(response.data.accessToken);
+    }
     return response.data;
   } catch (error: unknown) {
     console.error('Login API error:', error);
@@ -155,62 +192,19 @@ export const loginUser = async (credentials: LoginCredentials): Promise<LoginRes
   }
 };
 
-export const refreshAccessToken = async (): Promise<RefreshResponse> => {
-  try {
-    const response = await apiClient.post<RefreshResponse>('/refresh');
-    return response.data;
-  } catch (error: unknown) {
-    console.error('Refresh token API error:', error);
-    const errorMessage = getAxiosErrorMessage(error);
-    console.error('Detailed error response:', (error as AxiosError).response?.data);
-    return { success: false, message: errorMessage };
-  }
-};
-
 export const logoutUser = async (): Promise<LogoutResponse> => {
   try {
+    // Logout requires authentication, the interceptor will add the token.
     const response = await apiClient.post<LogoutResponse>('/logout');
-    // IMPORTANT: The backend's /logout endpoint MUST invalidate HTTP-only cookies
-    // by sending Set-Cookie headers with expired dates.
-    // The client-side clearAuthCookies is primarily for non-HTTP-only cookies or as a fallback.
-    clearAuthCookies();
+    clearAccessToken(); // Clear JWT token from local storage
     return response.data;
   } catch (error: unknown) {
     console.error('Logout API error:', error);
     const errorMessage = getAxiosErrorMessage(error);
     console.error('Detailed error response:', (error as AxiosError).response?.data);
-    // Even on error, attempt to clear client-side cookies and rely on backend for HTTP-only
-    clearAuthCookies();
+    clearAccessToken(); // Even on error, attempt to clear client-side token
     return { success: false, message: errorMessage };
   }
-};
-
-export const clearAuthCookies = () => {
-  // This function attempts to clear cookies client-side.
-  // IMPORTANT: This is ineffective for HTTP-only cookies.
-  // For HTTP-only cookies, the backend must send 'Set-Cookie' headers with expired dates.
-  document.cookie = 'accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-  document.cookie = 'refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-
-  document.cookie = 'accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' + window.location.hostname + ';';
-  document.cookie = 'refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=' + window.location.hostname + ';';
-
-  console.log('🔒 Auth cookies cleared manually (Note: Ineffective for HTTP-only cookies)');
-  console.warn('Backend /logout endpoint must invalidate HTTP-only cookies for full logout.');
-};
-
-export const forceLogout = () => {
-  // Force logout by clearing all auth state and cookies
-  clearAuthCookies();
-
-  // Clear local storage if used for any auth data
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('auth_user');
-    localStorage.removeItem('auth_state');
-    sessionStorage.clear();
-  }
-
-  console.log('🚪 Force logout completed - all auth data cleared');
 };
 
 export const getUserProfile = async (): Promise<UserProfileResponse> => {

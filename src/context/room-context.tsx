@@ -11,7 +11,6 @@ import {
 } from "react";
 import { useAuth } from "@/context/auth-context";
 import { Room } from "@/lib/types";
-import { useToast } from "@/hooks/use-toast";
 import { getRooms } from "@/lib/api";
 
 interface RoomContextType {

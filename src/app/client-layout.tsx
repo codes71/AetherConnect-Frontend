@@ -6,10 +6,8 @@ import { useAuth } from "@/context/auth-context"; // Import useAuth hook
 import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { usePathname } from "next/navigation";
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
   const { logout, isLoading } = useAuth();

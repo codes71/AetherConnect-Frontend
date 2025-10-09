@@ -1,7 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { loginUser, registerUser, logoutUser, getUserProfile, clearAuthCookies, forceLogout } from '@/lib/api'; // Assuming these functions will be created
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { loginUser, registerUser, logoutUser, getUserProfile } from '@/lib/api';
 
 interface User {
   id: string;
@@ -63,6 +63,7 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const isAuthenticated = !!user; // Declare isAuthenticated here
 
   // Function to load user from localStorage
   const loadUserFromLocalStorage = () => {
@@ -96,7 +97,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const checkAuthStatus = async () => {
+  // Helper to set a cookie
+  const setCookie = (name: string, value: string, days: number) => {
+    let expires = "";
+    if (days) {
+      const date = new Date();
+      date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+      expires = "; expires=" + date.toUTCString();
+    }
+    document.cookie = name + "=" + (value || "") + expires + "; path=/";
+  };
+
+  // Helper to erase a cookie
+  const eraseCookie = (name: string) => {
+    document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+  };
+
+  const checkAuthStatus = useCallback(async () => {
     setIsLoading(true);
     try {
       const storedUser = loadUserFromLocalStorage();
@@ -109,74 +126,66 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // If backend confirms, update with fresh profile data (if any changes)
           setUser(profileResponse.user);
           saveUserToLocalStorage(profileResponse.user); // Update localStorage with fresh data
+          setCookie('isLoggedIn', 'true', 30); // Ensure isLoggedIn cookie is set if user is valid
         } else {
           // If backend verification fails, clear local storage and user state
           console.warn("Local storage user data is stale or invalid, clearing.");
           removeUserFromLocalStorage();
           setUser(null);
-          clearAuthCookies(); // Also clear any lingering cookies
+          eraseCookie('isLoggedIn'); // Clear isLoggedIn cookie
         }
       } else {
-        // If no user in local storage, try to get profile (which uses cookies if present)
-        const profileResponse = await getUserProfile();
-        if (profileResponse.success && profileResponse.user && profileResponse.user.id) {
-          setUser(profileResponse.user);
-          saveUserToLocalStorage(profileResponse.user);
-          clearAuthCookies(); // Clear cookies after successful profile fetch and local storage save
-        } else {
-          setUser(null);
-          clearAuthCookies(); // Ensure cookies are cleared if no valid session
-        }
+        // If no user in local storage, no need to make API call
+        setUser(null);
+        eraseCookie('isLoggedIn'); // Ensure isLoggedIn cookie is cleared
       }
     } catch (error) {
       console.error("Error checking auth status:", error);
       removeUserFromLocalStorage();
       setUser(null);
-      clearAuthCookies(); // Clear user and cookies on any error
+      eraseCookie('isLoggedIn'); // Clear isLoggedIn cookie on any error
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     checkAuthStatus();
-  }, []);
+  }, [checkAuthStatus]);
 
   const login = async (credentials: LoginCredentials) => {
     const result = await loginUser(credentials);
-    if (result.success) {
-      // After successful login, fetch the user profile
-      const profileResponse = await getUserProfile();
-      if (profileResponse.success && profileResponse.user && profileResponse.user.id) {
-        setUser(profileResponse.user);
-        saveUserToLocalStorage(profileResponse.user);
-        // Removed clearAuthCookies() here. Middleware and AuthProvider's checkAuthStatus
-        // will rely on HTTP-only cookies for session validation.
-        // Client-side cookies are not explicitly stored, and HTTP-only cookies
-        // are managed by the backend.
-        return { success: true, message: "Login successful", user: profileResponse.user };
-      } else {
-        // If login was successful but profile fetch failed
-        console.error("Login successful, but failed to fetch user profile.");
-        removeUserFromLocalStorage();
-        setUser(null);
-        clearAuthCookies(); // Clear client-side cookies if profile fetch fails
-        return { success: false, message: "Login successful, but failed to retrieve user profile." };
-      }
+    if (result.success && result.user) { // accessToken is handled by api.ts in localStorage
+      setUser(result.user);
+      saveUserToLocalStorage(result.user);
+      setCookie('isLoggedIn', 'true', 30); // Set isLoggedIn cookie for middleware
+      return { success: true, message: "Login successful", user: result.user };
     }
-    return result; // Return original login result if not successful
+    // Handle cases where login is successful but user is missing
+    if (result.success) {
+      console.error("Login successful, but user data is missing from the response.");
+      return { success: false, message: "Login successful, but failed to retrieve user profile." };
+    }
+    return result;
   };
 
   const register = async (userData: RegisterData) => {
     const result = await registerUser(userData);
+    if (result.success && result.user) { // accessToken is handled by api.ts in localStorage
+      // After successful registration, the user is also logged in.
+      setUser(result.user);
+      saveUserToLocalStorage(result.user);
+      setCookie('isLoggedIn', 'true', 30); // Set isLoggedIn cookie for middleware
+    }
     return result;
   };
 
   const logout = async (options?: LogoutOptions) => {
-    const result = await logoutUser(); // This also calls clearAuthCookies internally
+    const result = await logoutUser(); // This now calls clearAccessToken internally
+    setUser(null);
+    removeUserFromLocalStorage(); // Clear user from local storage on logout
+    eraseCookie('isLoggedIn'); // Clear isLoggedIn cookie for middleware
     if (result.success) {
-      setUser(null);
-      removeUserFromLocalStorage(); // Clear user from local storage on logout
       if (!options?.suppressToast && options?.toastFn) {
         options.toastFn({
           title: "Logged Out",
@@ -190,23 +199,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return result;
   };
 
-  // Removed the refreshAuth function as per user feedback.
-  // const refreshAuth = async () => {
-  //   const result = await refreshAccessToken();
-  //   if (result.success) {
-  //     // After successful refresh, fetch the latest user profile
-  //     const profileResponse = await getUserProfile();
-  //     // Ensure updated profile also has a valid user object with an ID
-  //     if (profileResponse.success && profileResponse.user && profileResponse.user.id) {
-  //       setUser(profileResponse.user);
-  //       return true; // Indicate successful refresh and user update
-  //     }
-  //   }
-  //   setUser(null); // Clear user if refresh fails or profile fetch fails/user missing
-  //   return false; // Indicate failed refresh
-  // };
-
-  const isAuthenticated = !!user;
 
   // Provide the context value. Ensure all necessary values are included.
   const contextValue = {

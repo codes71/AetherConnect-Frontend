@@ -1,44 +1,26 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { logger } from "./lib/utils";
+
 export function middleware(request: NextRequest) {
-  // Log all cookies for debugging purposes in remote environments
-  // logger.log("Middleware: All cookies received:", request.cookies.getAll());
+  // Check for the isLoggedIn cookie
+  const isLoggedIn = request.cookies.get("isLoggedIn")?.value === 'true';
 
-  // Check for authentication token in cookies
-  const accessToken = request.cookies.get("accessToken")?.value;
-  const refreshToken = request.cookies.get("refreshToken")?.value;
-  const isAuthenticated = !!(accessToken || refreshToken);
+  logger.log("Middleware: Checking for isLoggedIn cookie. Found:", isLoggedIn);
 
-  logger.log("Middleware: accessToken:", accessToken ? "Present" : "Missing");
-  logger.log("Middleware: refreshToken:", refreshToken ? "Present" : "Missing");
-  logger.log("Middleware: isAuthenticated:", isAuthenticated);
+  const { pathname } = request.nextUrl;
 
+  // Protected routes that require authentication
   const protectedPaths = ["/chat", "/profile"];
-  const isProtectedPath = protectedPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
-  );
+  const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path));
 
-  if (isProtectedPath && !isAuthenticated) {
-    logger.log(
-      "Middleware: Unauthenticated access to protected route, redirecting to /login"
-    );
+  // If trying to access a protected path without being authenticated, redirect to login
+  if (isProtectedPath && !isLoggedIn) {
+    logger.log(`Middleware: Unauthenticated access to protected route "${pathname}". Redirecting to /login.`);
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  // Redirect authenticated users away from auth pages
-  const authPaths = ["/login", "/signup"];
-  const isAuthPath = authPaths.some(
-    (path) => request.nextUrl.pathname === path
-  );
-
-  if (isAuthPath && isAuthenticated) {
-    logger.log(
-      "Middleware: Authenticated user accessing auth page, redirecting to /chat"
-    );
-    return NextResponse.redirect(new URL("/chat", request.url));
-  }
-
+  // Allow the request to proceed. Client-side AuthContext will handle redirection for authenticated users on auth pages.
   return NextResponse.next();
 }
 

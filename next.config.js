@@ -53,6 +53,7 @@ const nextConfig = {
   },
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY || '',
+    NEXT_PUBLIC_WSS_URL: process.env.NEXT_PUBLIC_WSS_URL || 'ws://localhost:3000', // Connect to API Gateway
   },
   // Production optimizations
   compress: true,

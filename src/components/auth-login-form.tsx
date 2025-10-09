@@ -9,7 +9,6 @@ import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect } from "react"; // Import useEffect
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context"; // Import useAuth hook
 

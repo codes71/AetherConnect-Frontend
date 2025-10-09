@@ -27,83 +27,59 @@ The backend is built using a microservices architecture. Each service is a conta
 
 ## 3. Authentication Flow
 
-Authentication is cookie-based to enhance security (HttpOnly cookies prevent XSS attacks).
+Authentication is JWT-based with Bearer tokens. Access tokens are issued upon successful login or registration and must be included in the `Authorization` header for all protected requests.
 
-### 🍪 Cookie Security Strategy
+### 🔑 JWT Security Strategy
 
-The backend implements a comprehensive cookie security strategy with the following features:
+The backend implements a resilient JWT security strategy with the following features:
 
-- **HttpOnly**: Prevents XSS attacks by making cookies inaccessible to JavaScript
-- **Secure Flag**: Only sends cookies over HTTPS in production
-- **SameSite Protection**:
-  - `strict` in production: Prevents CSRF attacks by blocking cross-site requests
-  - `lax` in development: Allows some cross-site usage for development convenience
-- **Partitioned Cookies**: Enhanced security for embedded content (when available)
-- **Path-based Scope**: Cookies are scoped to `/` for application-wide access
-- **Automatic Expiration**: Cookies are cleared on logout and token invalidation
-
-**Cookie Configuration:**
-```typescript
-{
-  httpOnly: true,                    // Prevents XSS attacks
-  secure: process.env.NODE_ENV === "production",  // HTTPS only in production
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  partitioned: process.env.NODE_ENV === "production",
-  maxAge: maxAge,                   // Token-specific expiration
-  path: "/",                        // Application-wide scope
-}
-```
+-   **Long-Lived Access Tokens**: 30-day expiry reduces need for frequent re-authentication
+-   **Dual-Secret Validation**: Supports both regular JWTs and WebSocket tokens with different secrets
+-   **Optional Redis Blacklisting**: Redis blacklist optional when `REDIS_ENABLED=false`
+-   **Stateless Authentication**: JWTs enable stateless auth, ideal for microservices
+-   **Graceful Failover**: System works without Redis, logs warnings but continues operation
 
 1.  **Registration**: `POST /api/auth/register`
     -   The frontend sends user registration data.
     -   The API Gateway forwards this to the Auth Service.
-    -   On success, `accessToken` and `refreshToken` are set as HttpOnly cookies.
+    -   On success, an `accessToken` is returned in the response body.
 
 2.  **Login**: `POST /api/auth/login`
     -   The frontend sends user credentials.
     -   The API Gateway validates them with the Auth Service.
-    -   On success, `accessToken` (15-minute expiry) and `refreshToken` (7-day expiry) are set as HttpOnly cookies.
+    -   On success, an `accessToken` (30-day expiry) is returned in the response body.
 
 3.  **Authenticated Requests**:
-    -   For any subsequent HTTP request to a protected endpoint, the browser will automatically send the `accessToken` cookie.
-    -   The API Gateway validates this token.
+    -   For any subsequent HTTP request to a protected endpoint, the frontend must include the `accessToken` in the `Authorization` header as a Bearer token (e.g., `Authorization: Bearer <accessToken>`).
+    -   The API Gateway validates this token against the Auth Service and checks if it's blacklisted.
 
-4.  **Token Refresh**: `POST /api/auth/refresh` ⚡ **SECURITY ENHANCED**
-    -   If the `accessToken` expires, the frontend should call this endpoint.
-    -   **Token Rotation**: Each refresh generates BOTH a new `accessToken` AND a new `refreshToken`.
-    -   **Replay Protection**: Old refresh tokens are immediately invalidated and cannot be reused.
-    -   **Single-Use Tokens**: Each refresh token can only be used once, preventing token theft attacks.
-    -   The API Gateway sets both new tokens as HttpOnly cookies.
-
-5.  **Logout**: `POST /api/auth/logout` ⚡ **SECURITY ENHANCED**
-    -   **Requires Authentication**: Must include valid `accessToken` cookie.
-    -   **Backend Invalidation**: Invalidates the refresh token in the database (prevents stolen token usage).
-    -   **Cookie Clearing**: Clears both `accessToken` and `refreshToken` cookies from the browser.
-    -   **Complete Security**: Even if an attacker has stolen tokens, logout renders them useless.
+4.  **Logout**: `POST /api/auth/logout` ⚡ **SECURITY ENHANCED**
+    -   **Requires Authentication**: Must include a valid `accessToken` in the `Authorization` header.
+    -   **Backend Invalidation**: The `accessToken` is added to a Redis blacklist, immediately revoking its access.
+    -   **Complete Security**: Even if an attacker has stolen an active token, logout renders it useless.
 
 ### 🔒 Security Features (Sept 2025 Update)
 
-- **Token Rotation**: Every refresh generates new tokens, old ones become invalid
-- **Replay Attack Prevention**: Reusing old tokens returns "Token already used or invalid"
-- **Logout Invalidation**: Backend invalidates tokens, not just browser cookies
-- **Single-Use Tokens**: Each refresh token works exactly once
+-   **Logout Invalidation**: Access tokens are blacklisted in Redis upon logout.
+-   **Stateless Tokens**: No refresh tokens are used; access tokens are long-lived.
 
 ## 4. WebSocket Communication
 
 1.  **Get WebSocket Token**:
     -   Before establishing a WebSocket connection, the frontend must get a temporary WebSocket token.
-    -   Make a `GET` request to `/api/auth/ws-token` (this is a protected route, so a valid `accessToken` cookie is required).
-    -   This will return a short-lived token.
+    -   Make a `GET` request to `/api/auth/ws-token` (this is a protected route, so a valid `accessToken` in the `Authorization` header is required).
+    -   This will return a short-lived token in the response body.
 
 2.  **Connect to WebSocket Server**:
-    -   Connect to the Message Service at `ws://localhost:3001` (or the configured MESSAGE_SERVICE_HTTP_PORT).
+    -   Connect to the API Gateway at `ws://localhost:3000` (WebSocket proxy routes through `/socket`).
     -   Pass the WebSocket token in the `auth` payload of the Socket.io client:
         ```javascript
         import { io } from "socket.io-client";
 
         const wsToken = "your_ws_token_from_api";
 
-        const socket = io("ws://localhost:3001", {
+        const socket = io("http://localhost:3000", {
+          path: "/socket",  // WebSocket proxy path
           auth: {
             token: wsToken,
           },
@@ -147,15 +123,14 @@ The backend implements a comprehensive cookie security strategy with the followi
         }
         ```
 
--   `POST /api/auth/login`: Log in and get auth cookies.
+-   `POST /api/auth/login`: Log in and get auth token.
     -   **Success Response (200)**
         ```json
         {
           "success": true,
           "message": "Login successful",
           "user": { ... },
-          "accessToken": "...",
-          "refreshToken": "..."
+          "accessToken": "..."
         }
         ```
     -   **Error Response (401)**
@@ -166,25 +141,9 @@ The backend implements a comprehensive cookie security strategy with the followi
         }
         ```
 
--   `POST /api/auth/refresh`: Refresh the `accessToken`.
-    -   **Success Response (200)**
-        ```json
-        {
-          "success": true,
-          "message": "Token refreshed successfully"
-        }
-        ```
-    -   **Error Response (401)**
-        ```json
-        {
-          "success": false,
-          "message": "Invalid refresh token"
-        }
-        ```
-
--   `POST /api/auth/logout`: Log out and clear auth cookies. ⚡ **SECURITY ENHANCED**
-    -   **Authentication Required**: Must include valid `accessToken` cookie
-    -   **Backend Token Invalidation**: Invalidates refresh token in database
+-   `POST /api/auth/logout`: Log out and invalidate access token. ⚡ **SECURITY ENHANCED**
+    -   **Authentication Required**: Must include valid `accessToken` in `Authorization` header.
+    -   **Backend Token Invalidation**: Access token is added to a Redis blacklist.
     -   **Success Response (200)**
         ```json
         {
@@ -192,7 +151,7 @@ The backend implements a comprehensive cookie security strategy with the followi
           "message": "Logged out successfully"
         }
         ```
-    -   **Error Response (401)** - If not authenticated
+    -   **Error Response (401)** - If not authenticated or token is invalid
         ```json
         {
           "success": false,
@@ -316,58 +275,79 @@ The backend implements a comprehensive cookie security strategy with the followi
         }
         ```
 
-## 6. Backend Mind Map
+## 6. Backend Architecture Diagram
 
 ```
-Aetherconnect Backend
+🔐 AetherConnect Backend Architecture
+══════════════════════════════════════
 
-├─── Client (localhost:3004)
-│    │
-│    ├─── HTTP Requests (REST API)
-│    │    │
-│    │    └───> API Gateway (localhost:3000*)
-│    │          │
-│    │          ├─── Auth Routes (/api/auth)
-│    │          │    │
-│    │          │    ├─── Register, Login, Logout, Refresh
-│    │          │    │    │
-│    │          │    │    └───> Auth Service (gRPC on 50001*)
-│    │          │    │         │
-│    │          │    │         └───> PostgreSQL (port 5433)
-│    │          │    │
-│    │          │    └─── Get WS Token (Protected)
-│    │          │         │
-│    │          │         └───> Auth Service (gRPC on 50001*)
-│    │          │
-│    │          └─── Room Routes (/api/rooms)
-│    │               │
-│    │               └───> Message Service (gRPC on 50002*)
-│    │                    │
-│    │                    └───> MongoDB Atlas
-│    │
-│    └─── WebSocket Connection (Socket.io)
-│         │
-│         └───> Message Service (localhost:3001*)
-│               │
-│               ├─── Connection Handling (Token Auth)
-│               │    │
-│               │    └───> Auth Service (gRPC on 50001*)
-│               │
-│               ├─── Room Management (Join, Leave)
-│               │
-│               ├─── Message Handling (Send, Typing)
-│               │    │
-│               │    └───> Broadcast to Room Members
-│               │
-│               └─── Redis (for Socket.io Adapter)
-│
-└─── Services
-     │
-     ├─── API Gateway (NestJS) - Port 3000* (HTTP/WebSocket Proxy)
-     ├─── Auth Service (NestJS) - Port 3002* (HTTP) + 50001* (gRPC)
-     ├─── Message Service (NestJS) - Port 3001* (HTTP/Socket.IO) + 50002* (gRPC)
-     ├─── PostgreSQL - Port 5433 (5432 internal)
-     └─── Redis - Port 6379
+┌─────────────────┐         ┌─────────────────────┐
+│   CLIENT        │────────►│  API GATEWAY       │
+│  (localhost:3004)│   JWT  │  (localhost:3000) │
+└─────────────────┘ Bearer  │                     │
+                            │  ├─ JWT Guard       │
+                            │  ├─ Rate Limiting   │
+                            │  ├─ CORS            │
+                            │  └─ WS Proxy (/socket)
+                            └─────────────────────┘
+                                      │
+                   ┌──────────────────┼──────────────────┐
+                  JWT                 │                 gRPC
+               Bearer ┌───────────────▼─────────────┐ gRPC ┌─────────────────┐
+               Token  │    AUTH SERVICE             │      │  MESSAGE        │
+                      │  (localhost:50001 gRPC)     │◄─────►│  SERVICE       │
+                      │                             │      │  (localhost:   │
+                      │  ├─ User Registration       │      │     50002)     │
+                      │  ├─ JWT Access Tokens       │      │                 │
+                      │  ├─ WS Token Generation     │      │  ├─ WS Auth     │
+                      │  ├─ Optional Redis Blacklist│      │  ├─ Room Mgmt   │
+                      │  └─ PostgreSQL Storage      │      │  ├─ Messages    │
+                      └──────────────┬──────────────┘      │  ├─ Socket.IO   │
+                                     │                     │  └─ MongoDB     │
+                                     ▼                     └─────────────────┘
+                            ┌─────────────────┐                    │
+                            │  POSTGRESQL     │                    ▼
+                            │  (localhost:5433)│           ┌─────────────────┐
+                            │                 │           │   MONGODB        │
+                            │  ├─ User Data     │           │   ATLAS          │
+                            │  └─ User Sessions │           │                 │
+                            └─────────────────┘           │  ├─ Messages       │
+                                                         │  ├─ Rooms          │
+                                                         │  └─ Participants   │
+                                                         └─────────────────┘
 
-*Configurable via environment variables
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           OPTIONAL COMPONENTS                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐                     ┌─────────────────┐               │
+│  │     REDIS       │                     │   FRONTEND       │               │
+│  │  (localhost:6379│             ┌──────►│  (localhost:3004)│               │
+│  │  OR Upstash)    │◄───┐        │       └─────────────────┘               │
+│  │                 │    │        │                                               │
+│  │  ├─ JWT Blacklist│    └────────┘                                               │
+│  │  └─ WS Scaling   │    Logout Blacklisting (Optional, logs warning if                                   │
+│  └─────────────────┘    unavailable and continues)                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+║ SERVICE PORTS ║
+═══════════════════
+┌─ API Gateway ──► :3000 (HTTP/WebSocket)
+├─ Auth Service ──► :50001 (gRPC)
+├─ Message Svc ───► :3001 (HTTP/WS) + :50002 (gRPC)
+├─ PostgreSQL ────► :5433
+└─ Redis ─────────► :6379
+
+* Ports configurable via environment variables:
+  - API_GATEWAY_PORT=3000
+  - AUTH_SERVICE_GRPC_PORT=50001
+  - MESSAGE_SERVICE_HTTP_PORT=3001
+  - MESSAGE_SERVICE_GRPC_PORT=50002
+
+║ AUTHENTICATION FLOW ║
+═════════════════════════
+1. REGISTER/LOGIN → JWT Access Token (30 days) returned
+2. HTTP REQUESTS → Include "Authorization: Bearer <token>" header
+3. WS CONNECT → Get WS token, connect via API Gateway proxy
+4. LOGOUT → Token blacklisted (Redis optional, graceful failure)
+5. VALIDATE → Dual secret check (access + WS tokens)
 ```

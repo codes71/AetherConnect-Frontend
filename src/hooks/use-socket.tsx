@@ -44,6 +44,8 @@ export const useSocket = () => {
 
   const connectSocketFnRef = useRef<() => Promise<void>>();
   const stateRef = useRef({ connectionState, isAuthenticated, isShutdown });
+  const isConnectingRef = useRef(false);
+  const pendingConnectionRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     stateRef.current = { connectionState, isAuthenticated, isShutdown };
@@ -58,8 +60,16 @@ export const useSocket = () => {
       reconnectTimeoutRef.current = null;
     }
 
+    if (pendingConnectionRef.current) {
+      clearTimeout(pendingConnectionRef.current);
+      pendingConnectionRef.current = null;
+    }
+
     failTimersRef.current.forEach((timer) => clearTimeout(timer));
     failTimersRef.current.clear();
+
+    // Reset connection state
+    isConnectingRef.current = false;
 
     // Cleanup socket
     if (socketRef.current) {
@@ -118,7 +128,7 @@ export const useSocket = () => {
           isShutdown: latestShutdown,
         } = stateRef.current;
 
-        if (latestAuth && latestState !== "connecting" && !latestShutdown) {
+        if (latestAuth && latestState !== "connecting" && !latestShutdown && !isConnectingRef.current) {
           connectSocketFnRef.current?.();
         }
       }, delay);
@@ -237,8 +247,9 @@ export const useSocket = () => {
   );
 
   const connectSocket = useCallback(async () => {
+    // Check if already connecting or should not connect
     if (
-      socketRef.current?.connected ||
+      isConnectingRef.current ||
       !stateRef.current.isAuthenticated ||
       stateRef.current.connectionState === "connecting" ||
       stateRef.current.isShutdown
@@ -252,6 +263,7 @@ export const useSocket = () => {
       return;
     }
 
+    isConnectingRef.current = true;
     connectionAttemptRef.current++;
     setConnectionState("connecting");
     setLastError(null);
@@ -272,8 +284,8 @@ export const useSocket = () => {
         socketRef.current = null;
       }
 
-      const socket = io(process.env.NEXT_PUBLIC_WSS_URL || "ws://localhost:3001", {
-        path: "/socket/",
+      const socket = io(process.env.NEXT_PUBLIC_WSS_URL || "http://localhost:3000", { // Use http for Socket.IO connection
+        path: "/socket/",  // WebSocket proxy path, ensure trailing slash for consistency
         transports: ["websocket"],
         timeout: 10000,
         forceNew: true,
@@ -288,6 +300,7 @@ export const useSocket = () => {
         error instanceof Error ? error : new Error("Connection failed");
       logger.error("💥 Failed to connect:", appError);
 
+      isConnectingRef.current = false;
       setConnectionState("disconnected");
       setLastError(appError.message);
 
@@ -297,7 +310,7 @@ export const useSocket = () => {
         return next;
       });
     }
-  }, [setupSocketListeners, handleReconnection, maxConnectionAttempts, toast]);
+  }, [setupSocketListeners, handleReconnection, maxConnectionAttempts]);
 
   useEffect(() => {
     connectSocketFnRef.current = connectSocket;
@@ -430,16 +443,31 @@ export const useSocket = () => {
   /* ---------- Effects ---------- */
   useEffect(() => {
     let isMounted = true;
-    let connectionTimer: NodeJS.Timeout;
+    let connectionTimer: NodeJS.Timeout | null = null;
 
     if (isAuthenticated) {
       logger.log("✅ Auth state is TRUE, scheduling socket connection.");
+
+      // Clear any existing pending connection timer
+      if (pendingConnectionRef.current) {
+        clearTimeout(pendingConnectionRef.current);
+      }
+
       connectionTimer = setTimeout(() => {
-        if (isMounted) {
-          connectSocketFnRef.current?.();
+        if (isMounted && stateRef.current.isAuthenticated) {
+          connectSocket();
         }
       }, 250);
+
+      // Store the timer reference for cleanup
+      pendingConnectionRef.current = connectionTimer;
     } else {
+      // Clear pending connection timer when auth becomes false
+      if (pendingConnectionRef.current) {
+        clearTimeout(pendingConnectionRef.current);
+        pendingConnectionRef.current = null;
+      }
+
       cleanup();
     }
 
@@ -449,7 +477,7 @@ export const useSocket = () => {
         clearTimeout(connectionTimer);
       }
     };
-  }, [isAuthenticated, cleanup]);
+  }, [isAuthenticated, cleanup, connectSocket]);
 
   useEffect(() => {
     return () => {
