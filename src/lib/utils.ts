@@ -7,7 +7,7 @@ export function cn(...inputs: ClassValue[]) {
 
 console.log(`Logger initialized in ${process.env.NODE_ENV} mode.`);
 
-const isDevelopment =true;
+const isDevelopment =process.env.NODE_ENV === 'development';
 if (!isDevelopment) {
   console.log = () => {};
   console.warn = () => {};
